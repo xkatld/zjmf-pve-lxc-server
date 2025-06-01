@@ -1,43 +1,36 @@
-  <div class="alert alert-info alert-dismissable">
-            <button type="button" class="close" data-dismiss="alert"
-                    aria-hidden="true">
-                &times;
-            </button>
-            LXC服务器目前不支持硬盘扩容、新增，您可以选择升级到拥有更大磁盘的套餐。
+{if empty($disks)}
+    <div class="alert alert-warning">未能获取到磁盘信息。</div>
+{else}
+    <div class="alert alert-info alert-dismissable">
+        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+        LXC容器的磁盘管理通常在创建时设定，如需调整大小，可能需要通过升级产品套餐或联系管理员进行更复杂的操作。
+    </div>
+
+    <div class="row">
+        <div class="col-xl-12 col-xs-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">磁盘详细信息</h6>
+                </div>
+                <div class="card-body table-responsive mx-table">
+                    <table class="table table-hover t-text-dark--light-15 sm-text">
+                        <thead>
+                        <tr>
+                            <th>磁盘标识/存储</th>
+                            <th>配置大小 (GB)</th>
+                        </tr>
+                        </thead>
+                        <tbody class="t-mt-15">
+                        {foreach $disks as $disk_item}
+                        <tr>
+                            <td>{$disk_item.name}</td>
+                            <td>{$disk_item.size}</td>
+                        </tr>
+                        {/foreach}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
-<div class="row">
-    <div class="col-xl-12 col-xs-12">
-  <div class="card shadow mb-4">
-    <div class="card-header py-3">
-      <h6 class="m-0 font-weight-bold text-primary">磁盘详细信息</h6>
     </div>
-    <div class="card-body ">
-      
-      <table class="table table-hover  t-text-dark--light-15 sm-text">
-        <thead>
-          <tr>
-            <th scope="col">磁盘标识</th>
-            <th scope="col">大小</th>
-          </tr>
-        </thead>
-        <tbody class="t-mt-15">
-          <tr>
-            
-            <td>{$disk[0]}</td>
-            <td>{$params['configoptions_upgrade']['disk']} G</td>
-          </tr>
-        </tbody>
-      </table>
-      
-
-    </div>
-
-  </div>
-
-</div>
-
-
-
-</div>
-
-
+{/if}
