@@ -1,1847 +1,779 @@
 <?php
-// Jovesong编 MasonDye改
-use app\common\logic\RunMap;
-use app\common\model\HostModel;
 use think\Db;
 
-// 配置数据
 function proxmoxlxc_MetaData(){
 	return ['DisplayName'=>'ProxmoxVE-LXC对接模块', 'APIVersion'=>'2.0', 'HelpDoc'=>'https://www.almondnet.cn/'];
 }
 
-// 测试链接
 function proxmoxlxc_TestLink($params){
-    
-    // 构建URL
-    
-    // $url = $params['server_http_prefix']."://".$params['server_ip'].":".$params['port'];
-    // return $url;
-    
-    $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['hostname']."/status"),true);
-    
-    if($info==null || $info['data']==null){
-        $result['status'] = 200;
-		$result['data']['server_status'] = 0;
-		$result['data']['msg'] ="无法连接,地址可能错误或者是密钥不正确".json_encode($info);
-		return $result;
-    }else{
-         $result['status'] = 200;
-    	 $result['data']['server_status'] = 1;
-    	 $result['data']['msg'] = json_encode($info);
-    	 return $result;
+    $result = proxmoxlxc_API_Request($params, "/api/v1/nodes", "GET");
+    if($result && isset($result['success']) && $result['success']){
+        return ['status' => 200, 'data' => ['server_status' => 1, 'msg' => '连接成功']];
+    } else {
+        return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => '连接失败: ' . ($result['message'] ?? $result['detail'] ?? '未知错误')]];
     }
-    
-    // return 
-    
 }
 
-// 后台设置输出内容
 function proxmoxlxc_ConfigOptions(){
     return [
         [
-            'type'=>'text', 
-            'name'=>'系统网卡名称', 
-            'description'=>'分配给虚拟机的网卡',
-            'placeholder'=>'vmbr0',
-            'default'=>"vmbr0",
-            'key'=>'net_name'
+            'type'=>'text',
+            'name'=>'后端API地址',
+            'description'=>'Python后端API的完整URL (例如: http://127.0.0.1:8000)',
+            'placeholder'=>'http://127.0.0.1:8000',
+            'default'=>"http://127.0.0.1:8000",
+            'key'=>'backend_api_url'
         ],
         [
-            'type'=>'text', 
-            'name'=>'处理器限制', 
+            'type'=>'password',
+            'name'=>'后端API密钥',
+            'description'=>'用于认证Python后端API的密钥',
+            'placeholder'=>'输入您的API密钥',
+            'default'=>"",
+            'key'=>'backend_api_key'
+        ],
+        [
+            'type'=>'text',
+            'name'=>'系统网卡名称',
+            'description'=>'分配给虚拟机的网卡名称 (例如: eth0)',
+            'placeholder'=>'eth0',
+            'default'=>"eth0",
+            'key'=>'net_if_name'
+        ],
+        [
+            'type'=>'text',
+            'name'=>'桥接网卡名称',
+            'description'=>'Proxmox VE上的桥接网卡 (例如: vmbr0)',
+            'placeholder'=>'vmbr0',
+            'default'=>"vmbr0",
+            'key'=>'net_bridge_name'
+        ],
+        [
+            'type'=>'text',
+            'name'=>'处理器限制',
             'description'=>'处理器性能百分比限制(0无限制)',
             'placeholder'=>'0-8192 （0无限制）',
             'default'=>"0",
             'key'=>'cpulimit'
         ],
         [
-            'type'=>'text', 
-            'name'=>'处理器权重', 
+            'type'=>'text',
+            'name'=>'处理器权重',
             'description'=>'越大此机器获取的CPU时间越长(0禁用)',
             'placeholder'=>'0-500000 （0禁用）',
-            'default'=>"0",
+            'default'=>"1024",
             'key'=>'cpuunits'
         ],[
-            'type'=>'text', 
-            'name'=>'IP地址池', 
+            'type'=>'text',
+            'name'=>'IP地址池',
             'description'=>'IPV4地址范围(逗号隔开)',
             'placeholder'=>'172.16.0.2,172.16.0.20',
             'default'=>"172.16.0.2,172.16.0.20",
             'key'=>'ip_pool'
         ],[
-            'type'=>'text', 
-            'name'=>'掩码', 
-            'description'=>'掩码地址',
+            'type'=>'text',
+            'name'=>'掩码',
+            'description'=>'CIDR格式的掩码 (例如: 24)',
             'placeholder'=>'24',
             'default'=>"24",
             'key'=>'Mask'
         ],[
-            'type'=>'text', 
-            'name'=>'IP网关', 
-            'description'=>'网关',
+            'type'=>'text',
+            'name'=>'IP网关',
+            'description'=>'网关地址',
             'placeholder'=>'172.16.0.1',
             'default'=>"172.16.0.1",
             'key'=>'gateway'
         ],[
-            'type'=>'text', 
-            'name'=>'DNS服务器', 
-            'description'=>'域名解析服务器地址',
+            'type'=>'text',
+            'name'=>'DNS服务器',
+            'description'=>'域名解析服务器地址 (可选, 容器内配置)',
             'placeholder'=>'8.8.8.8',
             'default'=>"8.8.8.8",
             'key'=>'dns'
         ],[
-            'type'=>'text', 
-            'name'=>'系统盘存放盘', 
-            'description'=>'存放系统盘的盘名',
+            'type'=>'text',
+            'name'=>'系统盘存放盘',
+            'description'=>'存放系统盘的PVE存储名称',
             'placeholder'=>'local-lvm',
             'default'=>"local-lvm",
             'key'=>'system_disk'
         ],
         [
-            'type'=>'dropdown', 
-            'name'=>'交换内存', 
-            'description'=>'按照需求和定位酌情分配',
+            'type'=>'dropdown',
+            'name'=>'交换内存',
+            'description'=>'按照需求和定位酌情分配 (MB)',
             'options'=>[
-                     'noswap'=>'不分配',
+                     '0'=>'不分配',
+                     '512'=>'512',
                      '1024'=>'1024',
-                     '1:1'=>'对等分配'
+                     '2048'=>'2048',
+                     '1:1'=>'与内存对等'
             ],
-            'default'=>"noswap",
+            'default'=>"512",
             'key'=>'swap'
         ],
+         [
+            'type'=>'text',
+            'name'=>'映射展示IP',
+            'description'=>'用于NAT规则中公网IP的展示',
+            'placeholder'=>'您的公网IP或域名',
+            'default'=>"your_public_ip",
+            'key'=>'public_ip_for_display'
+        ],
         [
-            'type'=>'dropdown', 
-            'name'=>'类型', 
-            'description'=>'NAT 或 标准',
-            'options'=>[
-                     'bz'=>'标准',
-                     'nat'=>'nat',
-            ],
-            'default'=>"bz",
-            'key'=>'nat'
-        ],[
-            'type'=>'text', 
-            'name'=>'爱快地址', 
-            'description'=>'请包含请求头加端口',
-            'placeholder'=>'http://example.com:80',
-            'default'=>"http://example.com:80",
-            'key'=>'ikuai_url'
-        ],[
-            'type'=>'text', 
-            'name'=>'爱快用户名', 
-            'description'=>'类型为标准模式勿略',
-            'placeholder'=>'admin',
-            'default'=>"admin",
-            'key'=>'ikuai_username'
-        ],[
-           'type'=>'text', 
-            'name'=>'爱快密码', 
-            'description'=>'类型为标准模式勿略',
-            'placeholder'=>'password',
-            'default'=>"password",
-            'key'=>'ikuai_password'
-        ],[
-           'type'=>'text', 
-            'name'=>'映射展示地址', 
-            'description'=>'类型为标准模式勿略',
-            'placeholder'=>'example.com',
-            'default'=>"example.com",
-            'key'=>'ikuai_ip'
-        ],[
-            'type'=>'text', 
-            'name'=>'端口池-开始', 
-            'description'=>'端口范围（开始）',
-            'placeholder'=>'40000',
-            'default'=>"40000",
-            'key'=>'port_pool_start'
-        ],[
-            'type'=>'text', 
-            'name'=>'VMID起始值', 
+            'type'=>'text',
+            'name'=>'VMID起始值',
             'description'=>'VMID起始值，唯一值不能相同',
             'placeholder'=>'500',
             'default'=>"500",
             'key'=>'vmid_start'
         ],[
-            'type'=>'text', 
-            'name'=>'产品唯一值', 
-            'description'=>'产品唯一值，不能相同，推荐UUID',
+            'type'=>'text',
+            'name'=>'产品唯一值',
+            'description'=>'产品唯一值，不能相同，推荐UUID (用于区分VMID序列)',
             'placeholder'=>'D6D58A71-BA11-9192-E822-B2F46EBF1C65',
             'default'=>"D6D58A71-BA11-9192-E822-B2F46EBF1C65",
             'key'=>'product_unique_value'
-        ],[
-            'type'=>'text', 
-            'name'=>'端口池-结束', 
-            'description'=>'端口范围(结束)',
-            'placeholder'=>'50000',
-            'default'=>"50000",
-            'key'=>'port_pool_end'
-        ],[
-            'type'=>'dropdown', 
-            'name'=>'嵌套虚拟化', 
-            'description'=>'Docker等虚拟化是否允许',
+        ],
+        [
+            'type'=>'dropdown',
+            'name'=>'嵌套虚拟化',
+            'description'=>'是否允许运行Docker等虚拟化技术',
             'options'=>[
-                     'open'=>'开启',
-                     'close'=>'关闭',
+                     '1'=>'开启',
+                     '0'=>'关闭',
             ],
-            'default'=>"open",
+            'default'=>"1",
             'key'=>'nesting'
         ],
-        
-        
     ];
-		
 }
 
-
-// 前台页面
 function proxmoxlxc_ClientArea($params){
-
     $info = [
         'info'=>['name'=>'信息'],
         'net'=>['name'=>'网络'],
         'disk'=>['name'=>'硬盘'],
-        // 'firewalld'=>['name'=>'防火墙'],
         'snapshot'=>['name'=>'快照'],
         'connect'=>['name'=>'远程连接'],
-        // 'demo'=>['name'=>'测试'],
+        'nat'=>['name'=>'端口映射'],
+        'rw'=>['name'=>'操作记录'],
     ];
-    if($params['configoptions']['nat']=='nat'){
-        $info['nat']=['name'=>'端口映射'];
-    }
-    
-    $info['rw']=['name'=>'操作记录'];
-
     return $info;
 }
 
-
-// 前台输出页面
-function proxmoxlxc_ClientAreaOutput($params, $key){
-
-    if($key == "demo"){
-       
-        // 信息页面
-        return [
-            'template'=>'templates/demo.html',
-            'vars'=>[
-                'params'=>$params
-            ]
-        ];
-
+function proxmoxlxc_parse_config_string($str) {
+    $data = [];
+    $pairs = explode(',', $str);
+    foreach ($pairs as $pair) {
+        if (strpos($pair, '=') !== false) {
+            list($key, $value) = explode('=', $pair, 2);
+            $data[trim($key)] = trim($value);
+        } else {
+            $data[trim($pair)] = true; 
+        }
     }
-    
+    return $data;
+}
+
+function proxmoxlxc_ClientAreaOutput($params, $key){
     if($key == "info"){
-       
-        // 信息页面
         return [
             'template'=>'templates/info.html',
-            'vars'=>[
-                'params'=>$params
-            ]
+            'vars'=>['params'=>$params]
         ];
-
-    }else if($key == "net"){
-        // 网络页面
+    } elseif($key == "net"){
+        $config_result = proxmoxlxc_GET_lxc_config($params);
+        $network_info = [];
+        if($config_result && isset($config_result['success']) && $config_result['success'] && isset($config_result['data']['net0'])){
+            $net0_data = proxmoxlxc_parse_config_string($config_result['data']['net0']);
+            $network_info['name'] = $net0_data['name'] ?? ($params['configoptions']['net_if_name'] ?? 'eth0');
+            if (isset($net0_data['ip'])) {
+                 $ip_parts = explode('/', $net0_data['ip']);
+                 $network_info['ip'] = $ip_parts[0];
+                 $network_info['mask'] = $ip_parts[1] ?? $params['configoptions']['Mask'];
+            } else {
+                $network_info['ip'] = $params['dedicatedip'];
+                $network_info['mask'] = $params['configoptions']['Mask'];
+            }
+            $network_info['gw'] = $net0_data['gw'] ?? $params['configoptions']['gateway'];
+            $network_info['hwaddr'] = $net0_data['hwaddr'] ?? 'N/A';
+        }
         return [
             'template'=>'templates/network.html',
             'vars'=>[
                 'params'=>$params,
-                'test'=>json_encode($params),
-                'network'=>proxmoxlxc_GET_lxc_config($params)['data']['net0']
+                'network'=> $network_info
             ]
         ];
-
-    }else if($key == "disk"){
-        // 磁盘页面
+    } elseif($key == "disk"){
+         $config_result = proxmoxlxc_GET_lxc_config($params);
+         $disk_info = [];
+         if($config_result && isset($config_result['success']) && $config_result['success'] && isset($config_result['data']['rootfs'])){
+             $rootfs_data = proxmoxlxc_parse_config_string($config_result['data']['rootfs']);
+             $disk_info_str_parts = explode(':', $config_result['data']['rootfs']);
+             $disk_info_str = $disk_info_str_parts[0];
+             if(isset($rootfs_data['size'])){
+                $disk_info_str .= ':' . $rootfs_data['size'];
+             }
+             $disk_info[] = $disk_info_str;
+         }
         return [
             'template'=>'templates/disk.html',
             'vars'=>[
                 'params'=>$params,
-                'temp'=>json_encode(proxmoxlxc_GET_lxc_config($params)['data']),
-                'disk'=>proxmoxlxc_GET_lxc_config($params)['data']['rootfs']
+                'disk'=> $disk_info
             ]
         ];
-
-    }else if($key == "snapshot"){
-        // 快照页面
+    } elseif($key == "snapshot"){
+        $snapshot_result = proxmoxlxc_GET_lxc_snapshot_list($params);
         return [
             'template'=>'templates/snapshot.html',
             'vars'=>[
                 'params'=>$params,
-                'temp'=>json_encode(proxmoxlxc_GET_lxc_snapshot_list($params)),
-                'snapshot'=>proxmoxlxc_GET_lxc_snapshot_list($params)
-                
+                'snapshot'=> ($snapshot_result && isset($snapshot_result['success']) && $snapshot_result['success']) ? ($snapshot_result['data'] ?? []) : []
             ]
         ];
-
-    }else if($key == "rw"){
-        // 任务页面
+    } elseif($key == "rw"){
+        $tasks_result = proxmoxlxc_tasks_get_list($params);
         return [
             'template'=>'templates/rw.html',
             'vars'=>[
                 'params'=>$params,
-                'temp'=>json_encode(proxmoxlxc_tasks_get_list($params)),
-                'tasks'=>proxmoxlxc_tasks_get_list($params)
-                
+                'tasks'=> ($tasks_result && isset($tasks_result['success']) && $tasks_result['success']) ? ($tasks_result['data'] ?? []) : []
             ]
         ];
-
-    }else if($key == "nat"){
-        // 映射页面
-        // proxmoxlxc_nat_request($params,"","");
-        // 获取映射列表
-        
-        $nat_list = proxmoxlxc_nat_get_list($params);
-        
-        // $port_pool = explode(',', $params['configoptions']['port_pool_opt']);
-        // $min_port = (int)$port_pool[0];
-        // $max_port = (int)$port_pool[1];
-        
-        $min_port = (int)$params['configoptions']['port_pool_start'];
-        $max_port = (int)$params['configoptions']['port_pool_end'];
-        
-        if($nat_list['ErrMsg']=='Success'){
-            //  return "登陆成功了 本币";
-            // return $info;
-            // echo json_encode($nat_list);
-            
+    } elseif($key == "nat"){
+        $nat_list_result = proxmoxlxc_nat_get_list($params);
+        if ($nat_list_result && isset($nat_list_result['success']) && $nat_list_result['success']) {
             return [
-            'template'=>'templates/nat.html',
-            'vars'=>[
-                'params'=>$params,
-                'list'=>$nat_list['Data'],
-                'test'=>json_encode($params),
-                'max_port'=>$max_port,
-                'min_port'=>$min_port
-                // 'temp'=>json_encode(proxmoxlxc_tasks_get_list($params)),
-                // 'tasks'=>proxmoxlxc_tasks_get_list($params)
-                
-            ]
-        ];
-            
-            
-         }else{
-            //  return json_encode($info);
-             return  [
-            'template'=>'templates/error.html',
-            'vars'=>[
-                'error'=>[
-                    'code'=>'502',
-                    'msg'=>'无法连接映射服务器',
-                    'info'=>$nat_list['ErrMsg']
+                'template'=>'templates/nat.html',
+                'vars'=>[
+                    'params'=>$params,
+                    'list'=> $nat_list_result['data'] ?? [],
+                    'total_rules' => count($nat_list_result['data'] ?? []),
+                    'public_ip_for_display' => $params['configoptions']['public_ip_for_display'] ?? 'YOUR_PUBLIC_IP'
+                ]
+            ];
+        } else {
+            return  [
+                'template'=>'templates/error.html',
+                'vars'=>[
+                    'error'=>[
+                        'code'=>'502',
+                        'msg'=>'无法获取端口映射规则',
+                        'info'=> ($nat_list_result['message'] ?? $nat_list_result['detail'] ?? '未知错误')
                     ]
-            ]
-        ];
-         }
-        
-        
-
-    }else if($key == "connect"){
-        // 任务页面
-        // $ticket = proxmoxlxc_get_ticket($params);
-            $port ="null";
-        
-        if($params['configoptions']['nat']=='nat'){
-            $nat_list = proxmoxlxc_nat_get_list($params);
-        
-            if($nat_list['ErrMsg']=='Success'){
-                
-                foreach ($nat_list['Data']['data'] as $value){
-                    if($value['lan_port']=='22'){
-                        $port = $value['wan_port'];
-                    }
-                }
-                
-            }
-            
-        }else{
-            $port = '22';
+                ]
+            ];
         }
-        
+    } elseif($key == "connect"){
+        $ssh_port = '22';
+        $nat_rules = proxmoxlxc_nat_get_list($params);
+        if ($nat_rules && isset($nat_rules['success']) && $nat_rules['success'] && !empty($nat_rules['data'])) {
+            foreach ($nat_rules['data'] as $rule) {
+                if (isset($rule['container_port']) && $rule['container_port'] == 22 && isset($rule['protocol']) && strtolower($rule['protocol']) === 'tcp' && isset($rule['host_port'])) {
+                    $ssh_port = $rule['host_port'];
+                    break;
+                }
+            }
+        }
+
         return [
             'template'=>'templates/connect.html',
             'vars'=>[
                 'params'=>$params,
-                'port'=>$port,
+                'port'=> $ssh_port,
                 'vnc'=>proxmoxlxc_vnc_if($params)
-
             ]
         ];
-
     }
-    
+     return [
+        'template'=>'templates/error.html',
+        'vars'=>[
+            'error'=>[
+                'code'=>'404',
+                'msg'=>'页面未找到',
+                'info'=>'请求的页面不存在。'
+                ]
+        ]
+    ];
 }
 
-// 允许执行的func
 function proxmoxlxc_AllowFunction(){
 	return [
 		'client'=>["Getcurrent","delete_snapshot","RollBACK_snapshot","create_snapshot","nat_add","nat_del","Vnc"],
 	];
 }
 
-/*图表*/
-
-
-// 定义图表
 function proxmoxlxc_Chart(){
  return [
-    'cpu'=>[      // 图表type
-        'title'=>'CPU使用率',   // 标题
-        'select'=>[
-				[
-        					'name'=>'1小时',
-        					'value'=>'hour'
-        		],
-        		[
-        					'name'=>'一天',
-        					'value'=>'day'
-        					
-        		],
-        		[
-        					'name'=>'七天',
-        					'value'=>'week'
-        		],[
-        					'name'=>'一月',
-        					'value'=>'month'
-        		],
-			]
-        
-        
-    ],
-    'mem'=>[      // 图表type
-        'title'=>'内存使用率',   // 标题
-        'select'=>[
-				[
-        					'name'=>'1小时',
-        					'value'=>'hour'
-        		],
-        		[
-        					'name'=>'一天',
-        					'value'=>'day'
-        					
-        		],
-        		[
-        					'name'=>'七天',
-        					'value'=>'week'
-        		],[
-        					'name'=>'一月',
-        					'value'=>'month'
-        		],
-			]
-        
-    ],
-    'disk'=>[      // 图表type
-        'title'=>'硬盘IO',   // 标题
-        'select'=>[
-				[
-        					'name'=>'1小时',
-        					'value'=>'hour'
-        		],
-        		[
-        					'name'=>'一天',
-        					'value'=>'day'
-        					
-        		],
-        		[
-        					'name'=>'七天',
-        					'value'=>'week'
-        		],[
-        					'name'=>'一月',
-        					'value'=>'month'
-        		],
-			]
-       
-    ],
-    'network'=>[      // 图表type
-        'title'=>'网络流量',   // 标题
-        'select'=>[
-				[
-        					'name'=>'1小时',
-        					'value'=>'hour'
-        		],
-        		[
-        					'name'=>'一天',
-        					'value'=>'day'
-        					
-        		],
-        		[
-        					'name'=>'七天',
-        					'value'=>'week'
-        		],[
-        					'name'=>'一月',
-        					'value'=>'month'
-        		],
-			]
-       
-    ],
-];
- 
+    'cpu'=>['title'=>'CPU使用率', 'select'=>[['name'=>'1小时','value'=>'hour'],['name'=>'一天','value'=>'day'],['name'=>'七天','value'=>'week'],['name'=>'一月','value'=>'month'],['name'=>'一年','value'=>'year']]],
+    'mem'=>['title'=>'内存使用率', 'select'=>[['name'=>'1小时','value'=>'hour'],['name'=>'一天','value'=>'day'],['name'=>'七天','value'=>'week'],['name'=>'一月','value'=>'month'],['name'=>'一年','value'=>'year']]],
+    ];
 }
 
 function proxmoxlxc_ChartData($params){
-    
-    // 计算一下机器运行时间 
-    
-    // 读取机器信息
-    $uptime = proxmoxlxc_GET_lxc_info($params)['data']['uptime'];
-    $timeframe = $params['chart']['select'];
-    // if($uptime>=86400){
-    //     // 一天了
-    //     $timeframe = "day";
-    // }else{
-    //     // 一小时
-    //     $timeframe = "hour";
-    // }
-    // 	return ['status'=>'error', 'msg'=>json_encode($uptime)];
-    
-    $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/rrddata?timeframe=".$timeframe),true);
-    
-    
-    
-    if($params['chart']['type'] == 'cpu'){
-        
-        // 组成数组
-        
-        foreach ($info['data'] as $value){
-            
-            $cpu = substr($value['cpu'] * 100,0,2);
-            // $cpu = substr($value['cpu'],0,4);
-            $result['data']['list'][0][] = [
-                'time' =>date('Y-m-d H:i:s', $value['time']),
-                'value' =>$cpu
-                ];
-                
-        }
-        
-        $result["status"] = "success";  // 失败返回error
+    $timeframe = $params['options']['value'] ?? 'hour';
+    $rrd_type = ($params['chart']['type'] == 'cpu') ? 'cpu' : 'memory'; 
+    $rrd_result = proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain']."/rrd?type=".$rrd_type."&timeframe=".$timeframe, "GET");
 
-        $result["data"]["unit"] = "%";  //单位
-        
-        $result["data"]["chart_type"] = "line";  //支持 line线形,area区域填充
-        
-        $result["data"]["label"] = ["CPU使用率(%)"];  //对应每条线的label
-        
-        
-    }elseif($params['chart']['type'] == 'mem'){
-        
-        // 组成数组
-        
-        foreach ($info['data'] as $value){
-            
-            if($value['maxmem']==""){
-                break;
+    $result = [];
+    $result["status"] = "error";
+    $result["msg"] = "加载图表数据失败";
+
+    if($rrd_result && isset($rrd_result['success']) && $rrd_result['success'] && !empty($rrd_result['data'])) {
+        $chart_data_points = [];
+        foreach ($rrd_result['data'] as $point) {
+            if(isset($point['time']) && isset($point['value']) && $point['value'] !== null){
+                 $chart_data_points[] = ['time' => date('Y-m-d H:i:s', (int)$point['time']), 'value' => round($point['value'] * 100, 2)];
             }
-            // $cpu = round(substr($value['cpu'],0,4) * 100,2);
-            // $cpu = substr($value['cpu'],0,4);
-            $max_mem = ($value['maxmem'] / 1024) / 1024 ;
-            $run_mem = ($value['mem'] / 1024) / 1024 ;
-            
-            $mem = round($run_mem / $max_mem * 100,2);
-            // (data.data.mem / 1024) / 1024 (run_mem/mem_max*100)
-            
-            // 内存百分比的
-            $result['data']['list'][0][] = [
-                'time' =>date('Y-m-d H:i:s', $value['time']),
-                'value' =>$mem
-                ];
-            
-                
         }
-        
-        $result["status"] = "success";  // 失败返回error
-
-        $result["data"]["unit"] = "%";  //单位
-        
-        $result["data"]["chart_type"] = "line";  //支持 line线形,area区域填充
-        
-        $result["data"]["label"] = ["内存使用率(%)"];  //对应每条线的label
-        
-    }elseif($params['chart']['type'] == 'disk'){
-        
-        // 组成数组
-        $dw = "K";
-        foreach ($info['data'] as $value){
-          
-                $diskwrite = round($value['diskwrite'] / 1000,3);
-                $diskread = round($value['diskread'] / 1000,3);
-              
-
-            // 计算IO
-             $result['data']['list'][0][] = [
-                'time' =>date('Y-m-d H:i:s', $value['time']),
-                'value' =>$diskwrite
-            ];
-             $result['data']['list'][1][] = [
-                'time' =>date('Y-m-d H:i:s', $value['time']),
-                'value' =>$diskread
-            ];
-            
-                
+        if (!empty($chart_data_points)){
+            $result['data']['list'][0] = $chart_data_points;
+            $result["status"] = "success";
+            $result["data"]["unit"] = "%";
+            $result["data"]["chart_type"] = "line";
+            if($params['chart']['type'] == 'cpu'){
+                $result["data"]["label"] = ["CPU使用率(%)"];
+            } elseif($params['chart']['type'] == 'mem'){
+                 $result["data"]["label"] = ["内存使用率(%)"];
+            }
+            unset($result['msg']);
+        } else {
+             $result["msg"] = "图表数据为空";
         }
-        
-        $result["status"] = "success";  // 失败返回error
-
-        $result["data"]["unit"] = "K";  //单位
-        
-        $result["data"]["chart_type"] = "line";  //支持 line线形,area区域填充
-        
-        $result["data"]["label"] = ["写入速度(kb/s)","读取速度(kb/s)"];  //对应每条线的label
-        
-    }elseif($params['chart']['type'] == 'network'){
-        
-        // 组成数组
-        foreach ($info['data'] as $value){
-          
-                $netin = round($value['netin'] / 1000,3);
-                $netout = round($value['netout'] / 1000,3);
-              
-
-            // 计算IO
-             $result['data']['list'][0][] = [
-                'time' =>date('Y-m-d H:i:s', $value['time']),
-                'value' =>$netin
-            ];
-             $result['data']['list'][1][] = [
-                'time' =>date('Y-m-d H:i:s', $value['time']),
-                'value' =>$netout
-            ];
-            
-                
-        }
-        
-        $result["status"] = "success";  // 失败返回error
-
-        $result["data"]["unit"] = "K";  //单位
-        
-        $result["data"]["chart_type"] = "line";  //支持 line线形,area区域填充
-        
-        $result["data"]["label"] = ["入网流量(KB/s)","出网流量(KB/s)"];  //对应每条线的label
-        
+    } else {
+        $result["msg"] = "获取图表数据失败: " . ($rrd_result['message'] ?? $rrd_result['detail'] ?? '未知API错误');
     }
-    
     return $result;
-   
 }
 
-// vnc
 function proxmoxlxc_Vnc($params){
-    
-    // 判断是否存在VNC控制台的后端程序
-
     if(!proxmoxlxc_vnc_if($params)){
-
-        return ['status'=>'error','msg'=>'VNC功能未启用'];
-
+        return ['status'=>'error','msg'=>'VNC功能未启用或后端连接失败'];
     }
-    
+    $ticket_result = proxmoxlxc_get_ticket($params);
 
-    $ticket = proxmoxlxc_get_ticket($params);
-    if($ticket){
-        //noVNC 登入
-        //return ['status'=>'success','msg'=>'VNC连接创建成功','url'=>$params['server_http_prefix']."://".$params['server_ip'].":".$params['port']."/novnc/mgnovnc.html?novnc=1&console=lxc&node=".$params['server_host']."&vmid=".$params['domain']."&token=".$ticket];
-        //XtermJS 登入
-        return ['status'=>'success','msg'=>'VNC连接创建成功','url'=>$params['server_http_prefix']."://".$params['server_ip'].":".$params['port']."/novnc/mgnovnc.html?xtermjs=1&console=lxc&node=".$params['server_host']."&vmid=".$params['domain']."&token=".$ticket];
-        //return ['status'=>'success','msg'=>'VNC连接创建成功','url'=>$params['server_http_prefix']."://".$params['server_ip'].":".$params['port']."?console=shell&xtermjs=1"."&vmid=".$params['domain']."&node=".$params['server_host']."&token=".$ticket];
+    if(isset($ticket_result['success']) && $ticket_result['success'] && isset($ticket_result['data']['ticket']) && isset($ticket_result['data']['port']) && isset($ticket_result['data']['password'])){
+        $data = $ticket_result['data'];
+        $scheme = $params['server_secure'] ? 'https' : 'http';
+        $pve_host = $params['server_ip']; 
+        $pve_port = $data['port']; 
+        
+        $vnc_url = $scheme . "://" . $pve_host . ":" . $pve_port;
+        $vnc_path = "/?console=lxc&novnc=1&vmid=".$params['domain']."&node=".$params['server_host']."&resize=scale&vncticket=".urlencode($data['ticket'])."&password=".urlencode($data['password']);
+
+        return ['status'=>'200','msg'=>'VNC连接创建成功','url'=> $vnc_url . $vnc_path];
     }
-    
-    
-    // 不存在返回控制面板
-    
-    
-    
-    
-    
-    //  return ['status'=>'success','msg'=>'打开面板成功','url'=>$params['server_http_prefix']."://".$params['server_ip'].":".$params['port']];
+    return ['status'=>'error','msg'=>'获取VNC票据失败: '.($ticket_result['message'] ?? $ticket_result['detail'] ?? '未知错误')];
 }
 
-
-
-// 开通方法
 function proxmoxlxc_CreateAccount($params){
-    
-    
-    
-    
-    
-    
-    $ip_while_num_max = 100; // IP生成循环次数，如果超过一定阈值直接弹出IP不足
-    $ip_while_num = 0 ;
     $vmid = proxmoxlxc_nextid($params);
-    /*构建IP地址 只能暂时分配/24的地址*/
-   
-    // 分割IP段
-    
-    // 先把段分割成起始跟结束
-    $temp_ip_ = explode(",",$params['configoptions']['ip_pool']);
-    
-    $temp_ip_start = explode(".",$temp_ip_[0]);
-    
-    $temp_ip_end = explode(".",$temp_ip_[1]);
-    
-    // 开始分配IP地址
-    while_ip:
-        
-    if($ip_while_num>=$ip_while_num_max ){
-        return ['status'=>'error','msg'=>"无可用IP地址"];
+    if(!$vmid){
+         return ['status'=>'error','msg'=>"无法生成VMID, 请检查产品唯一值和VMID起始值配置"];
     }
-    
-    $ip = $temp_ip_start[0].".".$temp_ip_start[1].".".$temp_ip_start[2].".".rand($temp_ip_start[3],$temp_ip_end[3]);
-    
-    
-    // 验证IP是否占用
-    $file = fopen(__DIR__."/ip_pool.json","r");
-    
-    $ip_json =json_decode(fread($file,filesize(__DIR__."/ip_pool.json")),true);
-    
-    fclose($file);
-  
-    
-    foreach ($ip_json as $value){
-        if($value['ip'] == $ip){
-            // 存在相同的IP 冲突，重新获取IP
-            $ip_while_num = $ip_while_num + 1;
-            goto while_ip;
-            
+
+    $ip_pool_str = $params['configoptions']['ip_pool'] ?? '';
+    $ip_pool = !empty($ip_pool_str) ? explode(",", $ip_pool_str) : [];
+    $ip = "";
+
+    if (count($ip_pool) == 2) {
+        $start_ip_long = ip2long($ip_pool[0]);
+        $end_ip_long = ip2long($ip_pool[1]);
+        if($start_ip_long !== false && $end_ip_long !== false && $start_ip_long <= $end_ip_long){
+             $random_ip_long = mt_rand($start_ip_long, $end_ip_long);
+             $ip = long2ip($random_ip_long);
         }
+    } elseif (count($ip_pool) == 1 && filter_var(trim($ip_pool[0]), FILTER_VALIDATE_IP)) {
+        $ip = trim($ip_pool[0]);
+    }
+
+    if(empty($ip)){
+         return ['status'=>'error','msg'=>"IP地址池配置错误或无可用IP (配置: ".$ip_pool_str.")"];
+    }
+
+    $network_config = [
+        "name" => $params['configoptions']['net_if_name'] ?? 'eth0',
+        "bridge" => $params['configoptions']['net_bridge_name'] ?? 'vmbr0',
+        "ip" => $ip."/".($params['configoptions']['Mask'] ?? '24'),
+        "gw" => $params['configoptions']['gateway'] ?? ''
+    ];
+    if(isset($params['configoptions_upgrade']['network']) && (int)$params['configoptions_upgrade']['network'] > 0){
+        $network_config['rate'] = (int)$params['configoptions_upgrade']['network'];
+    }
+
+    $swap_config_value = $params['configoptions']['swap'] ?? '512';
+    $memory_mb = (int)($params['configoptions_upgrade']['memory'] ?? 512);
+    $swap_mb = 0;
+    if ($swap_config_value === '1:1') {
+        $swap_mb = $memory_mb;
+    } elseif (is_numeric($swap_config_value)) {
+        $swap_mb = (int)$swap_config_value;
+    }
+
+    $features_arr = [];
+    if(isset($params['configoptions']['nesting']) && $params['configoptions']['nesting'] == '1'){
+        $features_arr[] = "nesting=1";
     }
     
-    // 临时写在这里
-    // return ['status'=>'error','msg'=>proxmoxlxc_user_add($params,$ip,$params['password'],$vmid)];
-    
-    if(!proxmoxlxc_user_add($params,$ip,$params['password'],$vmid)){
-        
-        return ['status'=>'error','msg'=>"创建用户分配权限失败"];
-       
-    }
-    
-    // 构建JSON结构
-    
-    $json_network['server_vmid'] = $vmid;//对应主机VMID
-    $json_network['bridge']=$params['configoptions']['net_name'];
-    $json_network['ip'] = $ip;
-    $json_network['mask'] = $params['configoptions']['Mask'];
-    $json_network['gateway'] = $params['configoptions']['gateway'];
-    $json_network['rate']=$params['configoptions_upgrade']['network'];
-    
-    $ip_json[$ip] = $json_network;
-    
-    // 写入库
-    $file = fopen(__DIR__."/ip_pool.json","w");
-    
-    fwrite($file,json_encode($ip_json));
-    
-    fclose($file);
-    
-    // return ['status'=>'error','msg'=>json_encode($ip_json)];
-    
-    /*构建传递参数*/
-    
-    $network['name']='eth0';
-    $network['bridge']=$params['configoptions']['net_name'];
-    $network['gw']=$params['configoptions']['gateway'];
-    $network['ip']=$ip."/".$params['configoptions']['Mask'];
-    $network['rate']=$params['configoptions_upgrade']['network'];
-    foreach ($network as $key=>$value){
-        if($network_body==""){
-            $network_body = $key."%3D".$value;
-        }else{
-            $network_body = $network_body."%2C".$key."%3D".$value;
-        }
-    }
-    $data['start']=1;
-    $data['ostemplate'] = $params['configoptions_upgrade']['os']; // 模板
-    $data['vmid'] = $vmid; // vmid
-    $data['hostname']=$params['domain']; 
-    $data['unprivileged']=1;
-    if($params['configoptions']['nesting'] == 'open'){ //嵌套虚拟化允许
-        // $data['features']='nesting'."%3D"."1"."%2C".'keyctl'."%3D"."1";
-        $data['features']='nesting'."%3D"."1";
-        // $data['features']='nesting'."%3D"."1"."%2C".'keyctl'."%3D"."1"."%2C".'fuse'."%3D"."1";
-    }
-    $data['password']=$params['password'];
-    $data['rootfs']=$params['configoptions']['system_disk'].":".$params['configoptions_upgrade']['disk'];
-    $data['cores']=$params['configoptions_upgrade']['cpu'];
-    $data['memory']=$params['configoptions_upgrade']['memory'];
-    $data['net0']=$network_body;
-    $data['cmode']='console';
-    $data['onboot'] = true;
-    $data['nameserver'] = $params['configoptions']['dns'];
-    $data['description'] = "<h1>ArcCloud</h1></br>来自: 智简魔方ProxmoxVE-LXC模块</br>开通用户:".$params['user_info']['username']."|".$params['user_info']['id']."</br>产品编号:".$params['hostid']."</br>产品密码:".$params['password'];//描述
-    // $data['bwlimit']=$params['configoptions_upgrade']['network'];
-    if($params['configoptions']['swap'] == '1:1'){
-        // 对等分配swap
-        $data['swap'] = $params['configoptions_upgrade']['memory'];
-    }elseif($params['configoptions']['swap'] == '1024'){
-        // 分配1G
-        $data['swap'] = '1024';
-    }
-    
-    /*请求后端创建服务器*/
-    $info = json_decode(proxmoxlxc_request($params,"/api2/extjs/nodes/".$params['server_host']."/lxc",$data,"POST"),true);
-    /*结果处理*/
-    
-    
-    if($info['success']){
-        // 判断是否为nat机器 如果是就执行下默认映射操作
-        if($params['configoptions']['nat']=="nat"){
-            $post['comment'] = $params['domain']."的远程端口";
-            $post['type']='tcp+udp';
-            $post['lan_port'] = "22";
-            $post['lan_addr'] = $ip;
-    
-            
-            
-            $port_info = proxmoxlxc_nat_add($params,$post);
-            
-            if($port_info['ErrMsg']!="Success"){
-                active_logs("创建端口映射时出现错误:".json_encode($port_info),$params['uid'],2);
-                return ['status'=>'error','msg'=>json_encode($port_info)];
-            }
-            $update['port'] =$port_info['wan_port'];
-        }
-        
-        
-        
-        /*更新数据列表*/
-        
-        
-        
-        $update['dedicatedip'] =$ip;
-        $update['domain']=$data['vmid'];
+    $create_data = [
+        "node" => $params['server_host'],
+        "vmid" => (int)$vmid,
+        "ostemplate" => $params['configoptions_upgrade']['os'] ?? '',
+        "hostname" => $params['domain'],
+        "password" => $params['password'],
+        "cores" => (int)($params['configoptions_upgrade']['cpu'] ?? 1),
+        "memory" => $memory_mb,
+        "swap" => $swap_mb,
+        "storage" => $params['configoptions']['system_disk'] ?? '',
+        "disk" => (int)($params['configoptions_upgrade']['disk'] ?? 8), 
+        "network" => $network_config,
+        "unprivileged" => true,
+        "start" => true,
+        "features" => implode(",", $features_arr),
+        "tty" => "console", 
+        "cpulimit" => (int)($params['configoptions']['cpulimit'] ?? 0) ?: null,
+        "cpuunits" => (int)($params['configoptions']['cpuunits'] ?? 1024) ?: null,
+        "nameserver" => $params['configoptions']['dns'] ?: null, 
+    ];
+
+    $result = proxmoxlxc_API_Request($params, "/api/v1/containers", "POST", $create_data);
+
+    if($result && isset($result['success']) && $result['success']){
+        $update['dedicatedip'] = $ip;
+        $update['domain'] = (string)$vmid;
         Db::name('host')->where('id', $params['hostid'])->update($update);
-        
-        
-        
-        
-        /*写入本地文件*/
-        
-        return ['status'=>'success'];
-    }else{
-        // 错误处理 10086
-        return ['status'=>'error','msg'=>json_encode($info).json_encode($params).json_encode($data['ostemplate'])];
-    }
-    
-    
-    
-    
-}
 
-/*管理*/
-
-// 删除机器
-function proxmoxlxc_TerminateAccount ($params){
-    
-    
-    if(!proxmoxlxc_user_del($params)){
-        // return ['status'=>'error','msg'=>'用户删除失败'];
-        active_logs($params['dedicatedip']."@pve用户删除失败",$params['uid'],2);
-    }
-    
-    
-    $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."?purge=1&destroy-unreferenced-disks=1&force=1","","DELETE"),true);
-    if($info['data']==null || $info == null){
-        
-        
-        
-        
-        
-        return ['status'=>'error','msg'=>"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."purge=1&destroy-unreferenced-disks=1&force=1"];
-    }else{
-        /*把操作保存到ip池中 释放IP*/
-        
-        $file = fopen(__DIR__."/ip_pool.json","r");
-    
-        $ip_json =json_decode(fread($file,filesize(__DIR__."/ip_pool.json")),true);
-        
-        fclose($file);
-        
-        
-        
-        // 删除IP
-        unset($ip_json[$params['dedicatedip']]);
-        
-        // 写入库
-        $file = fopen(__DIR__."/ip_pool.json","w");
-        
-        fwrite($file,json_encode($ip_json));
-        
-        fclose($file);
-        
-        // 判断是否为映射机
-        
-        // 判断是否为nat机器 如果是就执行下默认映射操作
-        if($params['configoptions']['nat']=="nat"){
-            
-            // 操作删除映射
-            $nat_list = proxmoxlxc_nat_get_list($params);
-            
-            if($nat_list['ErrMsg']=='Success'){
-                // 获取成功
-                
-                foreach($nat_list['Data']['data'] as $key=>$value){
-                    // 执行删除
-                    $port['id'] = $value['id'];
-                    $port['wan_port'] = $value['wan_port'];
-                    $return_info = proxmoxlxc_nat_del($params,$port);
-                    
-                    // active_logs("执行删除映射结果:".json_encode($return_info),$params['uid'],2);
-                    
-                }
-                
-                
-            }else{
-                // 获取失败，写入日志
-                active_logs("执行删除映射失败:".json_encode($nat_list),$params['uid'],2);
-            }
-            
-            
+        $nat_add_payload = [
+            "wan_port" => 0, 
+            "lan_port" => 22,
+            "type" => "tcp",
+            "comment" => $params['domain']." SSH (自动创建)"
+        ];
+        $nat_result = proxmoxlxc_nat_add_internal($params, $nat_add_payload, $ip);
+        if(!$nat_result || !isset($nat_result['success']) || !$nat_result['success']){
+             active_logs("为VMID ".$vmid." 创建默认SSH端口映射失败: ".($nat_result['message'] ?? $nat_result['detail'] ?? '未知错误'),$params['uid'] ?? 0,2);
         }
-        
-        
-        // 便利映射数量
-        
-        // 删除映射
-        
-        
-        return ['status'=>'success'];
-    }
-    
 
+        return ['status'=>'success'];
+    } else {
+        return ['status'=>'error','msg'=>"创建容器失败: ".($result['message'] ?? $result['detail'] ?? json_encode($result))];
+    }
 }
 
-/*电源管理*/
+function proxmoxlxc_TerminateAccount ($params){
+    $nat_rules_result = proxmoxlxc_nat_get_list($params);
+    if ($nat_rules_result && isset($nat_rules_result['success']) && $nat_rules_result['success'] && !empty($nat_rules_result['data'])) {
+        foreach ($nat_rules_result['data'] as $rule) {
+            if(isset($rule['id'])){
+                 proxmoxlxc_nat_del_internal($params, $rule['id']);
+            }
+        }
+    }
 
-// 开机
+    $result = proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain'], "DELETE");
+    if($result && isset($result['success']) && $result['success']){
+        return ['status'=>'success'];
+    } else {
+        return ['status'=>'error','msg'=>"删除容器失败: ".($result['message'] ?? $result['detail'] ?? json_encode($result))];
+    }
+}
+
 function proxmoxlxc_On($params){
-    $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/status/start",$data,"POST"),true);
-    if($info['data']==null || $info == null){
-        return ['status'=>'error','msg'=>'操作失败'];
-    }else{
-        return ['status'=>'success'];
-    }
-    
-    
-    
+    $result = proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain']."/start", "POST");
+    return ($result && isset($result['success']) && $result['success']) ? ['status'=>'success'] : ['status'=>'error','msg'=>'开机操作失败: '.($result['message'] ?? $result['detail'] ?? '未知错误')];
 }
-// 关机
 function proxmoxlxc_Off($params){
-    $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/status/shutdown",$data,"POST"),true);
-    if($info['data']==null || $info == null){
-        return ['status'=>'error','msg'=>'操作失败'];
-    }else{
-        return ['status'=>'success'];
-    }
-    
-    
+     $result = proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain']."/shutdown", "POST");
+    return ($result && isset($result['success']) && $result['success']) ? ['status'=>'success'] : ['status'=>'error','msg'=>'关机操作失败: '.($result['message'] ?? $result['detail'] ?? '未知错误')];
 }
-
-// 重启
 function proxmoxlxc_Reboot($params){
-    $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/status/reboot",$data,"POST"),true);
-    if($info['data']==null || $info == null){
-        return ['status'=>'error','msg'=>'操作失败'];
-    }else{
-        return ['status'=>'success'];
-    }
+    $result = proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain']."/reboot", "POST");
+    return ($result && isset($result['success']) && $result['success']) ? ['status'=>'success'] : ['status'=>'error','msg'=>'重启操作失败: '.($result['message'] ?? $result['detail'] ?? '未知错误')];
 }
-
-// 强制关机
 function proxmoxlxc_HardOff ($params){
-     $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/status/stop",$data,"POST"),true);
-    if($info['data']==null || $info == null){
-        return ['status'=>'error','msg'=>'操作失败'];
-    }else{
-        return ['status'=>'success'];
-    }
+    $result = proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain']."/stop", "POST");
+    return ($result && isset($result['success']) && $result['success']) ? ['status'=>'success'] : ['status'=>'error','msg'=>'强制关机操作失败: '.($result['message'] ?? $result['detail'] ?? '未知错误')];
 }
-
-
-// 暂停
 function proxmoxlxc_SuspendAccount ($params){
-    proxmoxlxc_HardOff($params);
+    return proxmoxlxc_HardOff($params);
 }
-// 解除暂停
 function proxmoxlxc_UnsuspendAccount($params){
-    
+     return ['status'=>'error','msg'=>'暂不支持解停操作，请使用开机功能'];
 }
-
-
-/*功能函数*/
 
 function proxmoxlxc_Getcurrent($params){
-    $post = input('post.');
-
-    
-    // 验证PVE状态
-    if(!proxmoxlxc_Pvestatus($params)){
-        return ['status'=>'error','msg'=>'受控端异常'];
+    $result = proxmoxlxc_GET_lxc_info($params);
+    if($result && isset($result['success']) && $result['success'] && isset($result['data'])){
+        return ['status'=>'success', 'data' => $result['data']];
     }
-    
-    
-    return proxmoxlxc_GET_lxc_info($params);
+    return ['status'=>'error','msg'=>'获取当前状态失败: '.($result['message'] ?? $result['detail'] ?? '未知错误')];
 }
 
-
-// 获取VMID
 function proxmoxlxc_nextid($params) {
     $vmid_file_path = __DIR__ . "/vmid.json";
-    $product_unique_value = $params['configoptions']['product_unique_value'];
-    $start_vmid = (int)$params['configoptions']['vmid_start'];
+    $product_unique_value = $params['configoptions']['product_unique_value'] ?? 'default_product';
+    if(empty($product_unique_value)){ $product_unique_value = 'default_product';}
+    $start_vmid = (int)($params['configoptions']['vmid_start'] ?? 500);
+    if($start_vmid <=0) {$start_vmid = 500;}
 
-    // 初始化 $vmid_data
     $vmid_data = [];
-
-    // 文件存在并且可读
-    if (file_exists($vmid_file_path)) {
-        $vmid_file = fopen($vmid_file_path, "r+");
-        if (flock($vmid_file, LOCK_EX)) {
-            $file_content = fread($vmid_file, filesize($vmid_file_path));
-            if ($file_content !== false && trim($file_content) !== '') {
-                $vmid_data = json_decode($file_content, true);
-
-                // 检查是否JSON解析失败
-                if (json_last_error() !== JSON_ERROR_NONE) {
-                    $vmid_data = []; // 解析失败，初始化为空数组
-                }
+    if (file_exists($vmid_file_path) && filesize($vmid_file_path) > 0) {
+        $vmid_file_content = file_get_contents($vmid_file_path);
+        if($vmid_file_content !== false && trim($vmid_file_content) !== ''){
+            $decoded_data = json_decode($vmid_file_content, true);
+            if(json_last_error() === JSON_ERROR_NONE && is_array($decoded_data)){
+                $vmid_data = $decoded_data;
             }
-
-            if (isset($vmid_data[$product_unique_value])) {
-                // 获取当前 VMID 并返回
-                $current_vmid = (int)$vmid_data[$product_unique_value]['data'];
-
-                // 更新 VMID 并写回文件
-                $vmid_data[$product_unique_value]['data'] = $current_vmid + 1;
-                ftruncate($vmid_file, 0);
-                rewind($vmid_file);
-                fwrite($vmid_file, json_encode($vmid_data, JSON_PRETTY_PRINT));
-                fflush($vmid_file);
-                flock($vmid_file, LOCK_UN);
-                fclose($vmid_file);
-
-                return $current_vmid;
-            }
-
-            flock($vmid_file, LOCK_UN);
-        }
-        fclose($vmid_file);
-    }
-
-    // 文件不存在或没有产品唯一值，初始化并写入
-    $vmid_data[$product_unique_value] = ['data' => $start_vmid];
-
-    // 合并数据
-    if (file_exists($vmid_file_path)) {
-        $existing_data = json_decode(file_get_contents($vmid_file_path), true);
-        if (json_last_error() === JSON_ERROR_NONE && is_array($existing_data)) {
-            $vmid_data = array_merge($existing_data, $vmid_data);
         }
     }
 
-    $vmid_file = fopen($vmid_file_path, "w");
-    if (flock($vmid_file, LOCK_EX)) {
-        fwrite($vmid_file, json_encode($vmid_data, JSON_PRETTY_PRINT));
-        fflush($vmid_file);
-        flock($vmid_file, LOCK_UN);
+    $current_vmid_for_product = $start_vmid;
+    if (isset($vmid_data[$product_unique_value]) && is_numeric($vmid_data[$product_unique_value])) {
+         $current_vmid_for_product = (int)$vmid_data[$product_unique_value];
+         if($current_vmid_for_product < $start_vmid) {
+            $current_vmid_for_product = $start_vmid;
+         }
+    } else {
+        $current_vmid_for_product = $start_vmid;
     }
-    fclose($vmid_file);
-
-    return $start_vmid;
-}
-
-
-
-// 删除VMID
-// 这个功能先咕咕，没思路
-function proxmoxlxc_delete_id($params) {
     
-}
+    $next_vmid = $current_vmid_for_product;
+    $vmid_data[$product_unique_value] = $next_vmid + 1;
 
 
-// 没有唯一id，被取代
-// 获取VMID
-// function proxmoxlxc_nextid($params) {
-//     $vmid_file_path = __DIR__ . "/vmid.json";
-
-//     // 检查文件是否存在
-//     if (file_exists($vmid_file_path)) {
-//         $vmid_file_size = filesize($vmid_file_path);
-
-//         if ($vmid_file_size > 0) {
-//             // 文件存在且不为空，读取 JSON 数据
-//             $vmid_file = fopen($vmid_file_path, "r");
-//             $vmid_data = json_decode(fread($vmid_file, $vmid_file_size), true);
-//             fclose($vmid_file);
-
-//             // 获取当前 VMID 并返回
-//             $current_vmid = (int)$vmid_data['data'];
-
-//             // 将新的 VMID 加 1 并写回文件
-//             $new_vmid_data = ['data' => $current_vmid + 1];
-//             $vmid_file = fopen($vmid_file_path, "w");
-//             fwrite($vmid_file, json_encode($new_vmid_data, JSON_PRETTY_PRINT));
-//             fclose($vmid_file);
-
-//             return $current_vmid;
-//         }
-//     }
-
-//     // 文件不存在或为空，写入初始 VMID 并返回
-//     $start_vmid = (int)$params['configoptions']['vmid_start'];
-//     $new_vmid_data = ['data' => $start_vmid];
-//     $vmid_file = fopen($vmid_file_path, "w");
-//     fwrite($vmid_file, json_encode($new_vmid_data, JSON_PRETTY_PRINT));
-//     fclose($vmid_file);
-
-//     return $start_vmid;
-// }
-
-
-
-//老的版本
-// 获取VMID
-// function proxmoxlxc_nextid($params){
-
-//         if(!proxmoxlxc_Pvestatus($params)){
-//             // return ['status'=>'error','msg'=>'受控端异常'];
-//             return 0;
-//         }else{
-//              $request =  json_decode(proxmoxlxc_request($params,"/api2/json/cluster/nextid"),true);
-//              return $request['data'];
-//         }
-//     }
-
-
-
-// 检测pve状态
-function proxmoxlxc_Pvestatus($params){
-    
-    return 1;
-    
+    if (file_put_contents($vmid_file_path, json_encode($vmid_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX) === false) {
+        active_logs("写入VMID文件失败: ".$vmid_file_path, $params['uid'] ?? 0, 2);
+        return false;
+    }
+    return $next_vmid;
 }
 
 function proxmoxlxc_status($params){
-    
-
-    $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/status/current"),true);
-    $result['status'] = 'success';
-    if($request['data']['status']=='running'){
-        // 运行中
-        $result['data']['status'] = 'on';
-		$result['data']['des'] = '运行中';
-    }elseif($request['data']['status']=='stopped'){
-        $result['data']['status'] = 'off';
-		$result['data']['des'] = '关机';
-    }else{
-        $result['data']['status'] = 'unknown';
-        $result['data']['des'] = '未知';
+    $result = proxmoxlxc_GET_lxc_info($params);
+    if($result && isset($result['success']) && $result['success'] && isset($result['data']['status'])){
+        $pve_status = strtolower($result['data']['status']);
+        $status_map = [
+            'running' => ['status' => 'on', 'des' => '运行中'],
+            'stopped' => ['status' => 'off', 'des' => '关机'],
+            'suspended' => ['status' => 'off', 'des' => '已暂停(等同关机)'],
+        ];
+        return $status_map[$pve_status] ?? ['status' => 'unknown', 'des' => '未知 ('.$pve_status.')'];
     }
-    
-    return $result;
-    
+    return ['status' => 'unknown', 'des' => '获取状态失败'];
 }
 
-// 获取LXC信息
 function proxmoxlxc_GET_lxc_info($params){
-    $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/status/current"),true);
-    return $request;
-    
+    return proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain']."/status", "GET");
 }
 
-// 获取LXC配置信息
 function proxmoxlxc_GET_lxc_config($params){
-    $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/config"),true);
-    
-    if($request['data']==null||$request==null){
-        return false;
-    }
-    
-    // 把网卡配置格式化一下
-     $temp_net_info = explode(",",$request['data']['net0']);
-    foreach ($temp_net_info as $value){
-        
-        $temp = explode("=",$value);
-        
-        $temp_ini[$temp[0]]=$temp[1]; 
-         
-         
-    }
-    $request['data']['net0'] = $temp_ini;
-    
-    // 格式化硬盘
-    $temp_disk_info = explode(",",$request['data']['rootfs']);
-   
-    $request['data']['rootfs'] =  explode(",",$request['data']['rootfs']);;
-    
-    
-    return $request;
-    
+    return proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain']."/config", "GET");
 }
 
-/*快照相关*/
-
-// 获取快照列表
 function proxmoxlxc_GET_lxc_snapshot_list($params){
-    $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/snapshot/"),true);
-    $temp = [];
-    foreach ($request['data'] as $value){
-        
-        if($value['name']=="current"){
-             continue;
-        }
-        $value['snaptime'] = date('Y-m-d H:i:s',$value['snaptime']);
-        
-        $value['description'] = mb_convert_encoding($value['description'], 'GBK','UTF-8');
-        // $a = 1;
-        array_push($temp,$value);
-        
-        // $temp['name'] = $value['name'];
-    }
-    
-    return $temp;
-    
+    return proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain']."/snapshot", "GET");
 }
 
-// 删除快照
 function proxmoxlxc_delete_snapshot($params){
-    
-    $post = input('post.');
-    
-    $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/snapshot/".$post['name'],"","DELETE"),true);
-    
-    if($request['data']==null||$request==null){
-        return false;
+    $post = $_POST;
+    if (!isset($post['name']) || empty($post['name'])) {
+        return ['status'=>'error', 'msg'=>'快照名称不能为空'];
     }
-    
-    return ['status'=>'200','msg'=>'快照删除成功'];
-    
+    $result = proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain']."/snapshot/".urlencode($post['name']), "DELETE");
+    return ($result && isset($result['success']) && $result['success']) ? ['status'=>'success','msg'=>'删除快照成功'] : ['status'=>'error','msg'=>'删除快照失败: '.($result['message'] ?? $result['detail'] ?? '未知错误')];
 }
 
-// 回滚
 function proxmoxlxc_RollBACK_snapshot($params){
-    
-    $post = input('post.');
-    
-    $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/snapshot/".$post['name']."/rollback","","POST"),true);
-    
-    if($request['data']==null||$request==null){
-        return false;
+    $post = $_POST;
+     if (!isset($post['name']) || empty($post['name'])) {
+        return ['status'=>'error', 'msg'=>'快照名称不能为空'];
     }
-    
-    return ['status'=>'200','msg'=>'回滚成功'];
-    
+    $result = proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain']."/snapshot/".urlencode($post['name'])."/rollback", "POST");
+    return ($result && isset($result['success']) && $result['success']) ? ['status'=>'success','msg'=>'回滚快照成功'] : ['status'=>'error','msg'=>'回滚快照失败: '.($result['message'] ?? $result['detail'] ?? '未知错误')];
 }
 
-// 创建快照
 function proxmoxlxc_create_snapshot($params){
-    
-    $post = input('post.');
-    
-    // 检查传入的 快照名称是否符合后端pve服务器的要求
-    if (!isset($post['name']) || !preg_match('/^[a-zA-Z][a-zA-Z0-9_]{1,}$/', $post['name'])) {
-        return ['ErrMsg' => 'IllegalFormat'];
+    $post = $_POST;
+    if (!isset($post['name']) || !preg_match('/^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$/', $post['name'])) {
+        return ['status'=>'error', 'msg'=>'快照名称不符合规范 (1-64字符，允许字母、数字、下划线、连字符，且不能以连字符开头)'];
     }
-
-    // 检查快照描述是否超出了100字
-    if (!isset($post['description']) || strlen($post['description']) > 100) {
-        return ['ErrMsg' => 'IllegalFormat'];
+    if (!isset($post['description']) || mb_strlen($post['description'], 'UTF-8') > 250) {
+         return ['status'=>'error', 'msg'=>'快照描述超出长度限制 (250字符)'];
     }
-    
-    $data['snapname'] = $post['name'];
-    $data['description'] = $post['description'];
-    
-    $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/snapshot/",$data,"POST"),true);
-    
-    // 调试代码
-    //active_logs(json_encode($request).json_encode($data).$params['server_host'].$params['domain']);
-    
-    if($request['data']==null||$request==null){
-        return false;
-    }
-    
-    return ['status'=>'200','msg'=>'创建成功'];
-    
+    $data = ['snapname' => $post['name'], 'description' => $post['description']];
+    $result = proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain']."/snapshot", "POST", $data);
+    return ($result && isset($result['success']) && $result['success']) ? ['status'=>'success','msg'=>'创建快照成功'] : ['status'=>'error','msg'=>'创建快照失败: '.($result['message'] ?? $result['detail'] ?? '未知错误')];
 }
 
-/*任务相关*/
-
-// 获取任务列表
 function proxmoxlxc_tasks_get_list($params){
-    
-    
-    $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/tasks?vmid=".$params['domain']."&start=0&limit=10"),true);
-    
-    if($request['data']==null||$request==null){
-        return false;
-    }
-    
-    
-    $temp = [];
-    foreach ($request['data'] as $value){
-        
-        $value['starttime'] = date('Y-m-d H:i:s',$value['starttime']);
-        $value['endtime'] = date('Y-m-d H:i:s',$value['endtime']);
-        
-        // $a = 1;
-        array_push($temp,$value);
-        
-        // $temp['name'] = $value['name'];
-    }
-    
-    return $temp;
-    
-    
-    
-    // return $request['data'];
-    
-    
+    return proxmoxlxc_API_Request($params, "/api/v1/nodes/".$params['server_host']."/tasks?vmid=".$params['domain']."&limit=20", "GET");
 }
 
-
-/*
-端口映射相关操作
-*/
-
-
-
-// 获取列表
 function proxmoxlxc_nat_get_list($params){
-    $url = $params['configoptions']['ikuai_url']."/Action/call";
-    
-
-
-    $data['func_name'] = "dnat";
-    $data['action'] = "show";
-    $data['param'] = [
-     "TYPE"=>"total,data",
-     "limit"=>"0,20",
-     "FINDS"=>"lan_addr,lan_port,wan_port,comment",
-     "KEYWORDS"=> $params['dedicatedip']
-     
-     ];
-     
-     $info = json_decode(proxmoxlxc_nat_request($params,$url,$data),true);
-     
-    //  echo json_encode($data);
-     
-     return $info;
-     
-    //  return proxmoxlxc_nat_request($params,$url,$dataa);
+    return proxmoxlxc_API_Request($params, "/api/v1/nodes/".$params['server_host']."/lxc/".$params['domain']."/nat", "GET");
 }
 
-
-
-// 添加映射
-function proxmoxlxc_nat_add($params, $post = "") {
-    // 判断是从哪里请求的
-    if ($post == "") {
-        // 从前台请求的 需要手动拉一下内网ip
-        $post = input('post.');
-        $post['lan_addr'] = $params['dedicatedip'];
-    }
-
-    // 映射数量限制
-    $nat_list = proxmoxlxc_nat_get_list($params);
-    $nat_limit_error = ['ErrMsg' => 'ReachLimit'];
-
-    if ($nat_list['Data']['total'] == $params['configoptions_upgrade']['nat_limit']) {
-        return $nat_limit_error;
-    }
-
-    // 获取端口范围
-    // $port_pool = explode(',', $params['configoptions']['port_pool_opt']);
-    // $min_port = (int)$port_pool[0];
-    // $max_port = (int)$port_pool[1];
-    $min_port = (int)$params['configoptions']['port_pool_start'];
-    $max_port = (int)$params['configoptions']['port_pool_end'];
-
-    // 检查 post['wan_port'] 是否在合法范围内
-    if (!empty($post['wan_port']) && ($post['wan_port'] < $min_port || $post['wan_port'] > $max_port)) {
-        return ['ErrMsg' => 'IllegalPort'];
-    }
-
-    // 端口分配代码开始
-    $port_while_num_max = 100; // 端口生成循环次数，如果超出阈值直接弹出端口不足
-    $port_while_num = 0;
-    
-    $port_pool_file_path = __DIR__ . "/port_pool.json";
-
-    while (true) {
-        if ($port_while_num >= $port_while_num_max) {
-            return ['ErrMsg' => 'PortUnavailable'];
-        }
-
-        // 如果未传递外网端口，就按照端口池随机生成
-        if (empty($post['wan_port'])) {
-            $port = rand($min_port, $max_port);
-        } else {
-            $port = $post['wan_port'];
-        }
-
-        // 读取端口池文件
-        if (file_exists($port_pool_file_path)) {
-            $port_pool_file = fopen($port_pool_file_path, "r");
-            $port_pool_file_json = json_decode(fread($port_pool_file, filesize($port_pool_file_path)), true);
-            fclose($port_pool_file);
-        } else {
-            $port_pool_file_json = [];
-        }
-
-        $port_taken = false;
-
-        foreach ($port_pool_file_json as $key => $value) {
-            if ($key == $port) {
-                $port_taken = true;
-                break;
-            }
-        }
-
-        if (!$port_taken) {
-            // 端口没有被占用，执行后续操作
-            //if (empty($post['wan_port'])) {
-                // 更新端口池文件
-                //$port_pool_file_json[$port] = ['server_vmid' => $params['domain']];
-                $port_pool_file_json[$port] = [
-                    'server_vmid' => $params['domain'],
-                    'server_ip' => $params['dedicatedip']
-                ];
-                
-                $port_pool_file = fopen($port_pool_file_path, "w");
-                fwrite($port_pool_file, json_encode($port_pool_file_json, JSON_PRETTY_PRINT));
-                fclose($port_pool_file);
-            //}
-
-            $url = $params['configoptions']['ikuai_url'] . "/Action/call";
-            $data['func_name'] = "dnat";
-            $data['action'] = "add";
-            $data['param'] = [
-                "enabled" => "yes",
-                "comment" => $post['comment'],
-                "interface" => "all",
-                "lan_addr" => $post['lan_addr'],
-                "protocol" => $post['type'],
-                "wan_port" => $port,
-                "lan_port" => $post['lan_port'],
-                "src_addr" => ""
-            ];
-
-            $info = json_decode(proxmoxlxc_nat_request($params, $url, $data), true);
-            $info['wan_port'] = $port;
-
-            // 写入后台日志
-            //active_logs("执行创建映射函数返回结果: " . json_encode($info) . proxmoxlxc_nextid($params) . " | 端口池：" . json_encode($port_pool), $params['uid'], 2);
-            active_logs("执行创建映射函数返回结果: " . json_encode($info) . " | 端口池：" . json_encode($port_pool), $params['uid'], 2);
-            return $info;
-        } elseif (!empty($post['wan_port'])) {
-            // 如果 post['wan_port'] 有值且被占用
-            return ['ErrMsg' => 'PortCantBeUse'];
-        }
-
-        // 增加尝试次数
-        $port_while_num++;
-    }
-}
-
-
-// 之前的，作为备份，不支持外部端口自定义
-// 添加映射
-// function proxmoxlxc_nat_add($params,$post=""){
-    
-//     // 判断是从哪里请求的
-//     if($post==""){
-//         // 从前台请求的 需要手动拉一下内网ip
-//         $post = input('post.');
-//         $post['lan_addr'] = $params['dedicatedip'];
-//     }
-    
-//     // 映射数量限制
-//     $nat_list = proxmoxlxc_nat_get_list($params);
-
-//     $nat_limit_error = ['ErrMsg' => 'ReachLimit'];
-
-//     if ($nat_list['Data']['total'] == $params['configoptions_upgrade']['nat_limit']) {
-//         return $nat_limit_error;
-//     }
-    
-//     // 获取端口范围
-//     $port_pool = explode(',', $params['configoptions']['port_pool']);
-//     $min_port = (int)$port_pool[0];
-//     $max_port = (int)$port_pool[1];
-    
-//     // 如果未传递外网端口，就按照端口池随机生成
-//     if($post['wan_port']==""){
-//          //$post['wan_port'] = rand(20000,60000);
-//          $post['wan_port'] = rand($min_port,$max_port);
-//     }
-    
-//     $url = $params['configoptions']['ikuai_url']."/Action/call";
-    
-
-    
-//     $data['func_name'] = "dnat";
-//     $data['action'] = "add";
-//     $data['param'] = [
-//      "enabled"=>"yes",
-//      "comment"=>$post['comment'],
-//      "interface"=>"all",
-//      "lan_addr"=> $post['lan_addr'],
-//      "protocol"=>$post['type'],
-//      "wan_port"=>$post['wan_port'],
-//      "lan_port"=>$post['lan_port'],
-//      "src_addr"=>""
-     
-//      ];
-    
-//      $info = json_decode(proxmoxlxc_nat_request($params,$url,$data),true);
-//      $info['wan_port'] = $post['wan_port'];
-//     //  echo json_encode($data);
-    
-//     // 写入后台日志
-//      active_logs("执行创建映射函数返回结果:".json_encode($info),$params['uid'],2);
-//      return $info;
-    
-// }
-
-
-
-// 删除映射
-function proxmoxlxc_nat_del($params, $post = "") {
-    // 判断是从哪里请求的
-    if ($post == "") {
-        // 从前台请求的
-        $post = input('post.');
-    }
-
-    // 构建 API 请求 URL 和数据
-    $url = $params['configoptions']['ikuai_url'] . "/Action/call";
-    $data['func_name'] = "dnat";
-    $data['action'] = "del";
-    $data['param'] = [
-        "id" => $post['id'],
+function proxmoxlxc_nat_add_internal($params, $post_data, $container_ip_unused) {
+    $payload = [
+        "host_port" => (int)($post_data['wan_port'] ?? 0),
+        "container_port" => (int)$post_data['lan_port'],
+        "protocol" => strtolower($post_data['type']),
+        "description" => $post_data['comment'] ?? ''
     ];
+    return proxmoxlxc_API_Request($params, "/api/v1/nodes/".$params['server_host']."/lxc/".$params['domain']."/nat", "POST", $payload);
+}
 
-    // 发送请求并获取响应
-    $info = json_decode(proxmoxlxc_nat_request($params, $url, $data), true);
-
-    // 如果删除成功，处理 port_pool.json 文件
-    if ($info['ErrMsg'] == 'Success') {
-        $port_pool_file_path = __DIR__ . "/port_pool.json";
-
-        if (file_exists($port_pool_file_path)) {
-            // 读取端口池文件
-            $port_pool_file_content = file_get_contents($port_pool_file_path);
-            $port_pool_file_json = json_decode($port_pool_file_content, true);
-
-            // 根据请求中的端口号删除相应记录
-            $wan_port = $post['wan_port'] ?? null;
-            if ($wan_port && array_key_exists($wan_port, $port_pool_file_json)) {
-                unset($port_pool_file_json[$wan_port]);
-
-                // 保存更新后的端口池文件
-                $port_pool_file = fopen($port_pool_file_path, "w");
-                if (flock($port_pool_file, LOCK_EX)) { // 加锁，避免并发问题
-                    fwrite($port_pool_file, json_encode($port_pool_file_json, JSON_PRETTY_PRINT));
-                    fflush($port_pool_file); // 刷新缓冲区
-                    flock($port_pool_file, LOCK_UN); // 解锁
-                }
-                fclose($port_pool_file);
-            } else {
-                // 添加调试日志：未找到要删除的端口
-                active_logs("端口 {$wan_port} 不在端口池中或未指定.", $params['uid'], 2);
-            }
-        } else {
-            // 添加调试日志：文件不存在
-            active_logs("端口池文件不存在: " . $port_pool_file_path, $params['uid'], 2);
-        }
-    } else {
-        // 添加调试日志：API 删除失败
-        active_logs("删除映射 API 返回失败: " . json_encode($info), $params['uid'], 2);
+function proxmoxlxc_nat_add($params){
+    $post = $_POST;
+    if(!isset($post['lan_port']) || !filter_var($post['lan_port'], FILTER_VALIDATE_INT, ["options" => ["min_range" => 1, "max_range" => 65535]])){
+        return ['ErrMsg' => 'Error', 'msg' => '内网端口无效'];
+    }
+    if(isset($post['wan_port']) && $post['wan_port'] != 0 && !filter_var($post['wan_port'], FILTER_VALIDATE_INT, ["options" => ["min_range" => 1, "max_range" => 65535]])){
+        return ['ErrMsg' => 'Error', 'msg' => '公网端口无效 (0为自动分配)'];
+    }
+     if(!isset($post['type']) || !in_array(strtolower($post['type']), ['tcp', 'udp'])){
+        return ['ErrMsg' => 'Error', 'msg' => '协议类型无效'];
     }
 
-    // 写入后台日志
-    active_logs("执行删除映射函数返回结果:" . json_encode($info), $params['uid'], 2);
-    return $info;
+    $result = proxmoxlxc_nat_add_internal($params, $post, $params['dedicatedip']);
+    if ($result && isset($result['success']) && $result['success'] && isset($result['data'])){
+        return ['ErrMsg' => 'Success', 'msg' => $result['message'] ?? '添加成功', 'wan_port' => $result['data']['host_port'] ?? ($post['wan_port'] == 0 ? '自动' : $post['wan_port'])];
+    } else {
+        return ['ErrMsg' => 'Error', 'msg' => $result['message'] ?? $result['detail'] ?? '添加失败'];
+    }
 }
 
-
-
-
-
-
-// 过时的，不能删除port_pool.json文件中的映射记录
-// 删除映射
-// function proxmoxlxc_nat_del($params,$post=""){
-    
-    
-//     // 判断是从哪里请求的
-//     if($post==""){
-//         // 从前台请求的
-//         $post = input('post.');
-//     }
-    
-  
-    
-//     $url = $params['configoptions']['ikuai_url']."/Action/call";
-    
-
-    
-//     $data['func_name'] = "dnat";
-//     $data['action'] = "del";
-//     $data['param'] = [
-//      "id"=>$post['id'],
-    
-     
-//      ];
-    
-//      $info = json_decode(proxmoxlxc_nat_request($params,$url,$data),true);
-
-//     //  echo json_encode($data);
-    
-//     // 写入后台日志
-//      active_logs("执行删除映射函数返回结果:".json_encode($info),$params['uid'],2);
-//      return $info;
-    
-// }
-
-// 请求方法
-function proxmoxlxc_nat_request($params,$url,$data){
-    
-    /*登陆获取cookie*/
-    // 定义cookie存放路径
-    $cookie_file = dirname(__FILE__).'/cookie/ikuai_'.$params['server_ip'].'.cookie';
-    $login_url = $params['configoptions']['ikuai_url']."/Action/login";
-    // $post_string =  "{\"username\":\"admin\",\"passwd\":\"4e62f5790eea7611dd3c3e0ebc6d9c18\",\"pass\":\"c2FsdF8xMXhpYW93ZWlDMTIz\",\"remember_password\":\"true\"}";
-    
-    $post_data['username'] = $params['configoptions']['ikuai_username'];
-    
-    $post_data['passwd']= md5($params['configoptions']['ikuai_password']);
-    
-    $post_data['pass'] = md5("salt_11".$params['configoptions']['ikuai_password']);
-    
-    $post_data['remember_password'] = true;
-    
-    
-    
-    
-    $ch = curl_init($login_url); //初始化
-	curl_setopt($ch, CURLOPT_HEADER, 0); //不返回header部分
-	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); //返回字符串，??直接输出
-	curl_setopt($ch, CURLOPT_COOKIEJAR,  $cookie_file); //存储cookies
-	curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($post_data));
-	 curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,FALSE); // 屏蔽SSL
-        curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,FALSE); // 屏蔽SSL
-	curl_exec($ch);
-	curl_close($ch);
-// 	echo json_encode($post_data);
-    
-    
-    // 使用cookie请求
-    
-    $cookie_file = dirname(__FILE__).'/cookie/ikuai_'.$params['server_ip'].'.cookie';
-    
-    // $url =$params['configoptions']['ikuai_url']."/Action/call";
-    // $post_string = "{\"func_name\":\"dnat\",\"action\":\"show\",\"param\":{\"TYPE\":\"total,data\",\"limit\":\"0,20\",\"ORDER_BY\":\"\",\"ORDER\":\"\",\"FINDS\":\"lan_addr,lan_port,wan_port,comment\",\"KEYWORDS\":\"172.16.0.2\",\"FILTER1\":\"\",\"FILTER2\":\"\",\"FILTER3\":\"\",\"FILTER4\":\"\",\"FILTER5\":\"\"}}";
-    
-     
-        //  echo "get:".json_encode($dataa);
-         
-        $ch = curl_init($url);
-    	curl_setopt($ch, CURLOPT_HEADER, 0);
-    	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    	curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie_file); //使?上?获取的cookies
-    	curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-    	 curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,FALSE); // 屏蔽SSL
-        curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,FALSE); // 屏蔽SSL
-    	$response = curl_exec($ch);
-    	curl_close($ch);
-    	return $response;
-    
-    
-    
+function proxmoxlxc_nat_del_internal($params, $rule_id){
+    return proxmoxlxc_API_Request($params, "/api/v1/nat/rules/".$rule_id, "DELETE");
 }
 
+function proxmoxlxc_nat_del($params){
+    $post = $_POST;
+    if(!isset($post['id']) || !filter_var($post['id'], FILTER_VALIDATE_INT, ["options" => ["min_range" => 1]])){
+         return ['ErrMsg' => 'Error', 'msg' => '规则ID无效'];
+    }
+    $result = proxmoxlxc_nat_del_internal($params, $post['id']);
+     if ($result && isset($result['success']) && $result['success']){
+        return ['ErrMsg' => 'Success', 'msg' => $result['message'] ?? '删除成功'];
+    } else {
+        return ['ErrMsg' => 'Error', 'msg' => $result['message'] ?? $result['detail'] ?? '删除失败'];
+    }
+}
 
-/*用户管理相关方法*/
-
-// 创建用户
 function proxmoxlxc_user_add($params,$username,$password,$vmid){
-    // return FALSE;
-    
-    // 构建请求参数
-    $data['userid'] = $username."@pve";
-    $data['password'] = $password;
-    $data['comment'] = "用户:".$params['user_info']['username']."|".$params['user_info']['id']."的VNC账号,服务器编号:".$vmid;
-    
-    $request =  json_decode(proxmoxlxc_request($params,"/api2/extjs/access/users",$data,"POST"),true);
-    
-    if($request==null){
-        return FALSE;
-    }
-    
-    if($request['success']){
-        // 注册成功 开始分配权限
-        
-        // 构建参数
-        $qx['path'] = "%2Fvms%2F".$vmid;
-        $qx['users']= $data['userid'];
-        $qx['roles'] = "PVEVMUser";
-        
-        // 请求
-        $request1 =  json_decode(proxmoxlxc_request($params,"/api2/extjs/access/acl",$qx,"PUT"),true);
-        
-        return $request1;
-        
-    }
-    
-    // return "游结果咩:".json_encode($request);
+    active_logs("尝试为VMID ".$vmid." 创建用户 ".$username." (此功能依赖后端API的具体实现)", $params['uid'] ?? 0, 1);
+    return true; 
 }
 
-// 删除用户
 function proxmoxlxc_user_del($params){
-    
-    $request =  json_decode(proxmoxlxc_request($params,"/api2/extjs/access/users/".$params['dedicatedip']."@pve","","DELETE"),true);
-    
-    if($request==null){
-        return FALSE;
-    }
-    
-    if($request['success']){
-        // 删除成功 开始分配权限
-        return true;
-        
-        
-    }
-    
-    
+    active_logs("尝试删除与 ".$params['domain']." 相关的用户 (此功能依赖后端API的具体实现)", $params['uid'] ?? 0, 1);
+    return true;
 }
 
-// 禁用用户
-function proxmoxlxc_user_ban(){
-    proxmoxlxc_HardOff($params);
-    
-}
-
-// 解除禁用用户
-function proxmoxlxc_user_unban(){
-    
-}
-
-// 获取用户访问VNC授权
 function proxmoxlxc_get_ticket($params){
-    
-    $curl = curl_init();
-
-    $url = $params['server_http_prefix']."://".$params['server_ip'].":".$params['port']."/api2/extjs/access/ticket";
-    curl_setopt($curl,CURLOPT_URL,$url); 
-    curl_setopt($curl,CURLOPT_POSTFIELDS,"username=".$params['dedicatedip']."&password=".$params['password']."&realm=pve&new-format=1"); 
-    curl_setopt($curl,CURLOPT_SSL_VERIFYPEER,FALSE); // 屏蔽SSL
-    curl_setopt($curl,CURLOPT_SSL_VERIFYHOST,FALSE); // 屏蔽SSL
-    curl_setopt($curl, CURLOPT_RETURNTRANSFER,1);
-    
-    $response = curl_exec($curl);
-    $err = curl_error($curl);
-    
-    curl_close($curl);
-    
-    if ($err) {
-        // 判断服务器请求正常
-      return FALSE;
-    } else {
-      
-        $response = json_decode($response,true);
-        if($response['success']){
-            return $response['data']['ticket'];
-        }else{
-            return FALSE;
-        }
-      
-    }
-
-    
+     return proxmoxlxc_API_Request($params, "/api/v1/containers/".$params['server_host']."/".$params['domain']."/console", "POST");
 }
 
-// VNC判断是否存在后端文件
 function proxmoxlxc_vnc_if($params){
-    $curl = curl_init();
-    $url = $params['server_http_prefix']."://".$params['server_ip'].":".$params['port']."/novnc/mgnovnc.html";
-    //$url = $params['server_http_prefix']."://".$params['server_ip'].":".$params['port']."/?console=shell&novnc=1";
-    curl_setopt($curl,CURLOPT_URL,$url); 
-    curl_setopt($curl,CURLOPT_SSL_VERIFYPEER,FALSE); // 屏蔽SSL
-    curl_setopt($curl,CURLOPT_SSL_VERIFYHOST,FALSE); // 屏蔽SSL
-    curl_setopt($curl, CURLOPT_RETURNTRANSFER,1);
-    $response = strval(curl_exec($curl));
-    $err = curl_error($curl);
-    
-    curl_close($curl);
-    
-
-    if ($err) {
-      return FALSE;
-    } else {
-    //   echo $response;
-        if(stripos($response,"Loading")){
-            return true;
-        }else{
-            return FALSE;
-        }
-        // echo "是字符串";
-    
-    }
-        
-    
+    $result = proxmoxlxc_API_Request($params, "/api/v1/nodes/".$params['server_host'], "GET"); 
+    return ($result && isset($result['success']) && $result['success']);
 }
 
-function proxmoxlxc_request($params,$url,$data="",$method='GET'){
-        
-        $url = $params['server_http_prefix']."://".$params['server_ip'].":".$params['port'].$url;
-        if($data!=""){
-            
-            if($data['no']){
-                // 不格式化
-                
-                /*注意一下！！！如果后续其他功能BOOM了 绝对是这个造成的！！！！ */
-                unset($data['no']);
-                
-                $body = json_encode($data);
-            }else{
-                // 格式化一下要传递的格式
-            foreach ($data as $key=>$val) {
-                if($body == ""){
-                    // 首次
-                    $body = $key."=".$val."&";
-                }else{
-                    $body = $body.$key."=".$val."&";
-                }
-            }
-                
-            }
-            
-            
-        }
-        // return $url;
-        $ch = curl_init(); //初始化CURL句柄
-        curl_setopt($ch, CURLOPT_URL, $url); //设置请求的URL
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER,1); //设为TRUE把curl_exec()结果转化为字串，而不是直接输出
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method); //设置请求方式
-        curl_setopt($ch,CURLOPT_HTTPHEADER,array("X-HTTP-Method-Override: $method","Authorization:PVEAPIToken=".$params['accesshash']));//设置HTTP头信息 携带TOKEN
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $body);//设置提交的字符串
-        curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,FALSE); // 屏蔽SSL
-        curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,FALSE); // 屏蔽SSL
-        // curl_setopt($ch, CURLOPT_TIMEOUT,$this->Curl_TimeOut);
-        $document = curl_exec($ch);//执行预定义的CURL
-        $err = curl_error($ch);
-        curl_close($ch);
-        $r = mb_convert_encoding($document, 'UTF-8','GBK');
-        
-        // 错误处理
-        
-        if ($err) {
-          return "errorCurl:".$err;
-        } else {
-          return $r;
-        }
-        
-        
-       
+function proxmoxlxc_API_Request($params, $endpoint, $method = 'GET', $data = null){
+    $api_url_config = $params['configoptions']['backend_api_url'] ?? '';
+    if(empty($api_url_config)){
+        active_logs("后端API地址未配置", $params['uid'] ?? 0, 2);
+        return ['success' => false, 'message' => '后端API地址未配置', 'http_code' => 0];
     }
+    $api_url = rtrim($api_url_config, '/');
+    $api_key = $params['configoptions']['backend_api_key'] ?? '';
+
+    $url = $api_url . $endpoint;
+
+    $headers = [
+        "Content-Type: application/json",
+        "Accept: application/json"
+    ];
+    if(!empty($api_key)){
+        $headers[] = "Authorization: Bearer " . $api_key;
+    }
+
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); 
+    curl_setopt($ch, CURLOPT_TIMEOUT, 60);      
+
+    $parsed_url = parse_url($url);
+    if (isset($parsed_url['scheme']) && $parsed_url['scheme'] === 'https') {
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); 
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false); 
+    }
+
+
+    if($data !== null && in_array(strtoupper($method), ['POST', 'PUT', 'DELETE'])){
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data, JSON_UNESCAPED_UNICODE));
+    }
+
+    $response_body = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_error_msg = curl_error($ch);
+    $curl_error_no = curl_errno($ch);
+    curl_close($ch);
+
+    $log_context_short = "API: $method $endpoint (HTTP $http_code)";
+
+    if ($curl_error_no) {
+        active_logs("$log_context_short - CURL错误 ($curl_error_no): $curl_error_msg", $params['uid'] ?? 0, 2);
+        return ['success' => false, 'message' => 'API请求失败: ' . $curl_error_msg, 'http_code' => $http_code, 'curl_errno' => $curl_error_no];
+    }
+
+    $decoded_response = json_decode($response_body, true);
+
+    if ($http_code >= 200 && $http_code < 300) {
+        if (json_last_error() !== JSON_ERROR_NONE && !empty(trim($response_body)) && strtolower(trim($response_body)) !== "null") {
+        } else if (json_last_error() !== JSON_ERROR_NONE && !($http_code == 204 && empty($response_body)) ) {
+             active_logs("$log_context_short - 响应JSON解码错误. 原始响应: ".$response_body, $params['uid'] ?? 0, 2);
+             return ['success' => false, 'message' => 'API响应格式错误 (非JSON)', 'http_code' => $http_code, 'raw_response' => $response_body];
+        }
+        
+        if(!is_array($decoded_response)) { 
+             if ($http_code == 200 && is_string($response_body) && (stripos($response_body, "OK") !== false || stripos($response_body, "created") !== false) ) { 
+                return ['success' => true, 'data' => $response_body, 'message' => $response_body, 'http_code' => $http_code];
+             } elseif($http_code == 204) { 
+                return ['success' => true, 'data' => null, 'message' => '操作成功完成 (无内容)', 'http_code' => $http_code];
+             }
+             
+             return ['success' => true, 'data' => $decoded_response ?? $response_body, 'http_code' => $http_code];
+        }
+        if (!isset($decoded_response['success'])) {
+            $decoded_response['success'] = true; 
+        }
+        if (!isset($decoded_response['http_code'])) {
+            $decoded_response['http_code'] = $http_code;
+        }
+        return $decoded_response;
+
+    } else { 
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded_response)) {
+            $error_message = $decoded_response['detail'] ?? ($decoded_response['message'] ?? '未知API错误');
+            active_logs("$log_context_short - API错误: $error_message. 详情: ".json_encode($decoded_response, JSON_UNESCAPED_UNICODE), $params['uid'] ?? 0, 2);
+            if(!isset($decoded_response['success'])){ $decoded_response['success'] = false; } 
+            if(!isset($decoded_response['http_code'])){ $decoded_response['http_code'] = $http_code; }
+            return $decoded_response;
+        } else {
+            $error_message = !empty(trim($response_body)) ? strip_tags(trim($response_body)) : "HTTP $http_code";
+            active_logs("$log_context_short - API错误 (非JSON响应或空响应): $error_message", $params['uid'] ?? 0, 2);
+            return ['success' => false, 'message' => 'API错误: ' . $error_message, 'http_code' => $http_code, 'raw_response' => $response_body];
+        }
+    }
+}
 
 ?>
