@@ -1,118 +1,64 @@
-
-{$test}
-  <div class="card shadow mb-4">
+<div class="card shadow mb-4">
     <div class="card-header py-3">
-      <h6 class="m-0 font-weight-bold text-primary">SSH连接</h6>
+        <h6 class="m-0 font-weight-bold text-primary">SSH连接信息</h6>
     </div>
- <div class="card-body table-responsive">
-     您可以通过SSH客户端工具远程连接到此Linux服务器。以下是您的服务器的默认连接信息<br>
-       <table class="table table-hover  t-text-dark--light-15 sm-text">
-        <thead>
-          <tr>
-            <th scope="col">连接地址</th>
-            <th scope="col">端口</th>
-            <th scope="col">用户名</th>
-            <th scope="col">密码</th>
-          </tr>
-        </thead>
-        <tr>
-            <td>{$params['configoptions']['ikuai_ip']}</td><td>{$port}</td><td>root</td><td>{$params['password']}</td>
-        </tr>
+    <div class="card-body table-responsive">
+        <p>您可以通过SSH客户端工具远程连接到此Linux服务器。以下是您的服务器的默认连接信息：</p>
+        <table class="table table-hover t-text-dark--light-15 sm-text">
+            <thead>
+            <tr>
+                <th>连接地址</th>
+                <th>端口</th>
+                <th>用户名</th>
+                <th>密码</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td>{$public_ip}</td>
+                <td>{$ssh_port}</td>
+                <td>root</td>
+                <td>{$params.password}</td>
+            </tr>
+            </tbody>
         </table>
-    快速连接命令：ssh -p {$port} root@{$params['configoptions']['ikuai_ip']}
-    <br>
-    具体连接方法可以参考 <a href="" target="_blank">SSH客户端软件连接Linux服务器教程</a>
+        <p><strong>快速连接命令：</strong> <code>ssh -p {$ssh_port} root@{$public_ip}</code></p>
+        <p><small>注意：如果"连接地址"为空或显示为内网IP，请先在“端口映射”页面为SSH(22端口)创建一条TCP映射规则。</small></p>
+    </div>
+</div>
 
-  </div>
-
- 
- 
- </div>
-
-
-
-{if $vnc}
-  <div class="card shadow mb-4">
+{if $vnc_available}
+<div class="card shadow mb-4">
     <div class="card-header py-3">
-      <h6 class="m-0 font-weight-bold text-primary">救援连接</h6>
+        <h6 class="m-0 font-weight-bold text-primary">VNC 网页控制台</h6>
     </div>
-     <div class="card-body">
-         如您与服务器失联，您仍旧可以通过VNC救援远程连接至服务器<br>
-         
-        <button type="button" class="btn btn-success" onclick="connect_vnc()">VNC连接</button>
-        <br>
-        具体使用可以参考 <a href="" target="_blank">网页VNC远程操作方法</a>
+    <div class="card-body">
+        <p>如您与服务器失联，或需要进行底层操作，您可以通过VNC网页控制台连接至服务器。</p>
+        <button type="button" class="btn btn-success" onclick="connectToVNC()">打开VNC控制台</button>
     </div>
-
-  </div>
+</div>
+{else}
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">VNC 网页控制台</h6>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">VNC控制台功能当前不可用或获取信息失败。</p>
+    </div>
+</div>
 {/if}
 
-
-
-
-
-<script type="text/javascript" charset="utf-8">
-
-        function connect_vnc(){
-            var body = {"func":"Vnc"}
-            $.post("{$MODULE_CUSTOM_API}",body,function(data,status){
-                
-                if(data.status != "200"){
-                    alert("无法连接至控制台")
-                    return
-                }
-                
-                
-                // window.open(data.url,name,specs,replace)
-            window.open (data.url, "控制台VNC", "height=500, width=700, top=50%, left=50%, toolbar=no, menubar=no, scrollbars=no, resizable=no,location=no, status=yes"); //写成一行
-                // kzt.src=data.url
-                
-            })
-        }
-
-        
-     function ajax(options){
-        //创建一个ajax对象
-        var xhr = new XMLHttpRequest() || new ActiveXObject("Microsoft,XMLHTTP");
-        //数据的处理 {a:1,b:2} a=1&b=2;
-        if(typeof(options.data)!='string'){
-            var str = "";
-            for(var key in options.data){
-                str+="&"+key+"="+options.data[key];
+<script type="text/javascript">
+    function connectToVNC() {
+        var payload = { func: "Vnc" };
+        $.post("{$MODULE_CUSTOM_API}", payload, function(response) {
+            if (response.success && response.url) {
+                window.open(response.url, "VNC控制台_" + {$params.domain}, "height=600,width=800,toolbar=no,menubar=no,scrollbars=yes,resizable=yes,location=no,status=yes");
+            } else {
+                Swal.fire("连接失败", response.message || "无法获取VNC控制台链接。", "error");
             }
-            str = str.slice(1)
-        }else{
-            var str = options.data;
-        }
-        
-        options.dataType=options.dataType||'json';
-        if(options.type == "get"){
-            var url = options.url+"?"+str;
-            xhr.open("get",url);
-            xhr.setRequestHeader("Authorization","JWT {$Think.get.jwt}");
-            xhr.send();
-        }else if(options.type == "post"){
-            xhr.open("post",options.url);
-            xhr.setRequestHeader("content-type","application/x-www-form-urlencoded");
-            xhr.setRequestHeader("Authorization","JWT {$Think.get.jwt}");
-            xhr.send(str)
-        }
-        //监听
-        xhr.onreadystatechange = function(){
-            //当请求成功的时候
-            if(xhr.readyState == 4 && xhr.status == 200){
-                var d = xhr.responseText;
-                d = JSON.parse(d);
-                //将请求的数据传递给成功回调函数
-                options.success&&options.success(d,xhr.responseXML)
-            }else if(xhr.status != 200){
-                //当失败的时候将服务器的状态传递给失败的回调函数
-                options.error&&options.error(xhr.status);
-            }
-        }
+        }).fail(function() {
+            Swal.fire("网络错误", "请求后端接口失败", "error");
+        });
     }
-        
 </script>
-
-
-
