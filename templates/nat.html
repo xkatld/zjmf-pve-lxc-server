@@ -1,234 +1,191 @@
-
 <div class="row">
     <div class="col-xl-9 col-xs-12">
-  <div class="card shadow mb-4">
-    <div class="card-header py-3">
-      <h6 class="m-0 font-weight-bold text-primary">映射列表</h6>
-    </div>
-    <div class="card-body mx-table table-responsive">
-        <button type="button" class="btn btn-success sm-text text-uppercase mb-2" data-toggle="modal" data-target="#create_nat">新建映射</button>
-      <table class="table table-hover  t-text-dark--light-15 sm-text">
-        <thead>
-          <tr>
-            <!--<th scope="col">映射ID</th>-->
-            <th scope="col">状态</th>
-            <th scope="col">内网端口</th>
-            <th scope="col">外网端口</th>
-            <th scope="col">协议</th>
-            <th scope="col">公网地址</th>
-            
-            <th scope="col">备注</th>
-            <th scope="col">操作</th>
-          </tr>
-        </thead>
-        <tbody class="t-mt-15">
-            
-            
-             {foreach $list.data as $key => $vo}
-             
-             <tr>
-            <!--<td>{$vo.id}</td>-->
-            <td>{if $vo.enabled=='yes'}
-            
-            <label class="badge badge-success">正常</label>
-            {else}
-            <label class="badge badge-warning">禁用</label>
-            {/if}
-      
-            
-            </td>
-            <td>{$vo.lan_port}</td>
-            <td>{$vo.wan_port}</td>
-            <td>{$vo.protocol}</td>
-            <td>{$params['configoptions']['ikuai_ip']}:{$vo.wan_port}</td>
-            <td>{$vo.comment}</td>
-            <td>
-                <button type="button" class="btn btn-warning" onclick="DelNat('{$vo.id}','{$vo.wan_port}')">删除</button>
-                
-                
-                
-            </td>
-          </tr>
-             
-             {/foreach}
-            
-        
-        </tbody>
-      </table>
-      
-      
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">端口映射列表</h6>
+            </div>
+            <div class="card-body mx-table table-responsive">
+                {if $error_message}
+                    <div class="alert alert-danger">{$error_message}</div>
+                {else}
+                    <button type="button" class="btn btn-success sm-text text-uppercase mb-2" data-toggle="modal" data-target="#create_nat_modal">新建映射</button>
+                    {if empty($nat_rules) && !$error_message}
+                        <p>当前没有端口映射规则。</p>
+                    {else}
+                    <table class="table table-hover t-text-dark--light-15 sm-text">
+                        <thead>
+                        <tr>
+                            <th>状态</th>
+                            <th>协议</th>
+                            <th>公网IP</th>
+                            <th>公网端口</th>
+                            <th>容器端口</th>
+                            <th>备注</th>
+                            <th>操作</th>
+                        </tr>
+                        </thead>
+                        <tbody class="t-mt-15">
+                        {foreach $nat_rules as $rule}
+                        <tr>
+                            <td>
+                                {if $rule.enabled}
+                                <label class="badge badge-success">正常</label>
+                                {else}
+                                <label class="badge badge-warning">禁用</label>
+                                {/if}
+                            </td>
+                            <td>{$rule.protocol|upper}</td>
+                            <td>{$rule.host_ip|default:$public_ip_for_display}</td>
+                            <td>{$rule.host_port}</td>
+                            <td>{$rule.container_port}</td>
+                            <td>{$rule.description}</td>
+                            <td>
+                                <button type="button" class="btn btn-warning btn-sm" onclick="deleteNatRule('{$rule.id}')">删除</button>
+                            </td>
+                        </tr>
+                        {/foreach}
+                        </tbody>
+                    </table>
+                    {/if}
+                {/if}
+            </div>
+        </div>
     </div>
 
-  </div>
-
+    <div class="col-xl-3 col-xs-12">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">映射信息</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-hover t-text-dark--light-15 sm-text">
+                    <tbody>
+                    <tr>
+                        <td>公网地址:</td>
+                        <td><strong>{$public_ip_for_display|default:"N/A"}</strong></td>
+                    </tr>
+                    <tr>
+                        <td>已映射数量:</td>
+                        <td>{$total_rules}</td>
+                    </tr>
+                    <tr>
+                        <td>规则上限:</td>
+                        <td>{$nat_limit}</td>
+                    </tr>
+                    <tr>
+                        <td>剩余可创建:</td>
+                        <td>{$nat_limit - $total_rules}</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
-<div class="col-xl-3 col-xs-12">
-  <div class="card shadow mb-4">
-    <div class="card-header py-3">
-      <h6 class="m-0 font-weight-bold text-primary">映射信息</h6>
-    </div>
-    <div class="card-body">
-      <table class="table table-hover  t-text-dark--light-15 sm-text">
-        <thead>
-          <tr>
-            <th scope="col">可映射数量 ：  {$params['configoptions_upgrade']['nat_limit']}</th>
-          </tr>
-           <tr>
-            <th scope="col">已映射数量 ：  {$list['total']}</th>
-          </tr>
-          
-        </thead>
-        
-      </table>
-
-    </div>
-
-  </div>
-
-</div>
-
-
-
-</div>
-
-<!-- 模态框（Modal） -->
-    <div class="modal fade" id="create_nat" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    
-                    <h4 class="modal-title" id="myModalLabel">创建映射</h4>
-                    <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
-                </div>
-                <div class="modal-body">
-                    
-
-                      <div class="form-group">
-                        <label for="name">内网端口</label>
-                        <input type="text" class="form-control" id="nat_lan_port" placeholder="内网端口号">
-                      </div>
-                      
-                     <div class="form-group">
-                        <label for="name">外网端口</label>
-                        <input type="text" class="form-control" id="nat_wan_port" placeholder="留空自动分配">
-                      </div>
-                      
-                      <div class="form-group">
-                        <label for="name">使用协议</label>
-                        <select class="form-control" id="nat_type">
-                          <option value="tcp">TCP</option>
-                          <option value="udp">UDP</option>
-                          <option value="tcp+udp">TCP+UDP</option>
-                        </select>
-                        
-                    
-                      </div>
-                      
-                      <div class="form-group">
-                        <label for="name">备注</label>
-                        <input type="text" class="form-control" id="nat_comment" placeholder="备注信息">
-                      </div>
-
-                    
+<div class="modal fade" id="create_nat_modal" tabindex="-1" role="dialog" aria-labelledby="createNatModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createNatModalLabel">新建端口映射</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="create_nat_form">
+                    <div class="form-group">
+                        <label for="nat_lan_port">容器端口</label>
+                        <input type="number" class="form-control" id="nat_lan_port" name="lan_port" placeholder="例如: 80" required min="1" max="65535">
                     </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-default" data-dismiss="modal">关闭</button>
-                    <button type="button" class="btn btn-primary" onclick="CreateNat()">创建</button>
-                </div>
-            </div><!-- /.modal-content -->
-        </div><!-- /.modal -->
+                    <div class="form-group">
+                        <label for="nat_wan_port">公网端口</label>
+                        <input type="number" class="form-control" id="nat_wan_port" name="wan_port" placeholder="留空或0为自动分配" min="0" max="65535">
+                        <small class="form-text text-muted">如果您的服务商指定了公网端口范围，请在此填写。</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="nat_type">协议</label>
+                        <select class="form-control" id="nat_type" name="type">
+                            <option value="tcp">TCP</option>
+                            <option value="udp">UDP</option>
+                            <option value="tcp+udp">TCP+UDP (将分别创建两条规则)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="nat_comment">备注</label>
+                        <input type="text" class="form-control" id="nat_comment" name="comment" placeholder="例如: 网站服务">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" onclick="createNatRule()">创建</button>
+            </div>
+        </div>
     </div>
-<script type="text/javascript" charset="utf-8">
-    
-    // 创建映射
-    function CreateNat(){
+</div>
 
-            
-            var body = {"func":"nat_add","wan_port":nat_wan_port.value,"lan_port":nat_lan_port.value,"type":nat_type.value,"comment":nat_comment.value}
-            $.post("{$MODULE_CUSTOM_API}",body,function(data,status){
-                if(data.ErrMsg=="Success"){
-                    Swal.fire("成功", data.msg, "success");
-                    setTimeout(location.reload(),5000)
-                }else if(data.ErrMsg=="ReachLimit"){
-                    Swal.fire("失败", "映射数量达到上限", "error");
-                }else if(data.ErrMsg=="PortUnavailable"){
-                    Swal.fire("失败", "无可用端口", "error");
-                }else if(data.ErrMsg=="PortCantBeUse"){
-                    Swal.fire("失败", "端口不可用", "error");
-                }else if(data.ErrMsg=="IllegalPort"){
-                    Swal.fire("失败", "端口需要介于{$min_port}与{$max_port}之间", "error");
-                }else{
-                    Swal.fire("失败", "创建映射失败", "error");
-                }
-            
-            
-                
-                    
-             })
-        }
-    
-    // 删除映射
-    function DelNat(id,wan_port){
+<script type="text/javascript">
+    function createNatRule() {
+        var payload = {
+            func: "nat_add",
+            lan_port: document.getElementById('nat_lan_port').value,
+            wan_port: document.getElementById('nat_wan_port').value,
+            type: document.getElementById('nat_type').value,
+            comment: document.getElementById('nat_comment').value
+        };
 
-            
-            var body = {"func":"nat_del","id":id,"wan_port":wan_port}
-            $.post("{$MODULE_CUSTOM_API}",body,function(data,status){
-                if(data.ErrMsg=="Success"){
-                    Swal.fire("成功", data.msg, "success");
-                    setTimeout(location.reload(),5000)
-                }else{
-                    Swal.fire("失败", "删除映射失败", "error");
-                }
-            
-            
-                
-                    
-             })
+        if (!payload.lan_port || payload.lan_port < 1 || payload.lan_port > 65535) {
+            Swal.fire("错误", "请输入有效的容器端口 (1-65535)", "error");
+            return;
         }
-    
-    
-    
-    function ajax(options){
-        //创建一个ajax对象
-        var xhr = new XMLHttpRequest() || new ActiveXObject("Microsoft,XMLHTTP");
-        //数据的处理 {a:1,b:2} a=1&b=2;
-        if(typeof(options.data)!='string'){
-            var str = "";
-            for(var key in options.data){
-                str+="&"+key+"="+options.data[key];
+        if (payload.wan_port && (payload.wan_port < 0 || payload.wan_port > 65535)) {
+             Swal.fire("错误", "请输入有效的公网端口 (1-65535)，或留空/0表示自动", "error");
+            return;
+        }
+
+
+        $.post("{$MODULE_CUSTOM_API}", payload, function(response) {
+            if (response.success) {
+                Swal.fire("成功", response.message || "NAT规则创建成功", "success").then(function() {
+                    location.reload();
+                });
+            } else {
+                Swal.fire("失败", response.message || "创建NAT规则失败", "error");
             }
-            str = str.slice(1)
-        }else{
-            var str = options.data;
-        }
-        
-        options.dataType=options.dataType||'json';
-        if(options.type == "get"){
-            var url = options.url+"?"+str;
-            xhr.open("get",url);
-            xhr.setRequestHeader("Authorization","JWT {$Think.get.jwt}");
-            xhr.send();
-        }else if(options.type == "post"){
-            xhr.open("post",options.url);
-            xhr.setRequestHeader("content-type","application/x-www-form-urlencoded");
-            xhr.setRequestHeader("Authorization","JWT {$Think.get.jwt}");
-            xhr.send(str)
-        }
-        //监听
-        xhr.onreadystatechange = function(){
-            //当请求成功的时候
-            if(xhr.readyState == 4 && xhr.status == 200){
-                var d = xhr.responseText;
-                d = JSON.parse(d);
-                //将请求的数据传递给成功回调函数
-                options.success&&options.success(d,xhr.responseXML)
-            }else if(xhr.status != 200){
-                //当失败的时候将服务器的状态传递给失败的回调函数
-                options.error&&options.error(xhr.status);
-            }
-        }
+        }).fail(function() {
+            Swal.fire("网络错误", "请求后端接口失败", "error");
+        });
     }
-        
-    
+
+    function deleteNatRule(ruleId) {
+        Swal.fire({
+            title: '确认删除?',
+            text: "您确定要删除这条NAT规则吗？此操作不可恢复!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: '是的，删除它!',
+            cancelButtonText: '取消'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                var payload = {
+                    func: "nat_del",
+                    id: ruleId
+                };
+                $.post("{$MODULE_CUSTOM_API}", payload, function(response) {
+                    if (response.success) {
+                        Swal.fire("已删除!", response.message || "NAT规则已删除。", "success").then(function() {
+                            location.reload();
+                        });
+                    } else {
+                        Swal.fire("删除失败!", response.message || "删除NAT规则时发生错误。", "error");
+                    }
+                }).fail(function() {
+                    Swal.fire("网络错误", "请求后端接口失败", "error");
+                });
+            }
+        });
+    }
 </script>
