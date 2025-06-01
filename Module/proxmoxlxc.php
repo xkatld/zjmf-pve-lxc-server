@@ -66,7 +66,7 @@ function proxmoxlxc_ConfigOptions() {
             'type' => 'text',
             'name' => '默认操作系统模板',
             'placeholder' => '例如: local:vztmpl/ubuntu-22.04-standard.tar.gz',
-            'description' => '格式: storage:template_path (产品可配置选项中的key应为: 操作系统模板)',
+            'description' => '格式: storage:template_path (产品可配置选项中应使用此key: default_ostemplate)',
             'key' => 'default_ostemplate',
             'default' => ''
         ],
@@ -74,7 +74,7 @@ function proxmoxlxc_ConfigOptions() {
             'type' => 'text',
             'name' => '默认存储池',
             'placeholder' => '例如: local-lvm',
-            'description' => '用于根文件系统的存储池 (产品可配置选项中的key应为: 存储池)',
+            'description' => '用于根文件系统的存储池 (产品可配置选项中应使用此key: default_storage)',
             'key' => 'default_storage',
             'default' => 'local-lvm'
         ],
@@ -82,42 +82,42 @@ function proxmoxlxc_ConfigOptions() {
             'type' => 'text',
             'name' => '默认网桥',
             'placeholder' => '例如: vmbr0',
-            'description' => '用于容器网络的Proxmox VE网桥 (产品可配置选项中的key应为: 网桥)',
+            'description' => '用于容器网络的Proxmox VE网桥 (产品可配置选项中应使用此key: default_bridge)',
             'key' => 'default_bridge',
             'default' => 'vmbr0'
         ],
         [
             'type' => 'text',
             'name' => '默认CPU核心数',
-            'description' => '分配给容器的CPU核心数 (产品可配置选项中的key应为: CPU核心数)',
+            'description' => '分配给容器的CPU核心数 (产品可配置选项中应使用此key: default_cores)',
             'key' => 'default_cores',
             'default' => '1'
         ],
         [
             'type' => 'text',
             'name' => '默认CPU限制',
-            'description' => 'CPU限制 (0表示无限制, 1表示1个核心的100%) (产品可配置选项中的key应为: CPU限制)',
+            'description' => 'CPU限制 (0表示无限制, 1表示1个核心的100%) (产品可配置选项中应使用此key: default_cpulimit)',
             'key' => 'default_cpulimit',
             'default' => '0'
         ],
         [
             'type' => 'text',
             'name' => '默认内存(MB)',
-            'description' => '分配给容器的内存大小 (MB) (产品可配置选项中的key应为: 内存MB)',
+            'description' => '分配给容器的内存大小 (MB) (产品可配置选项中应使用此key: default_memory)',
             'key' => 'default_memory',
             'default' => '512'
         ],
         [
             'type' => 'text',
             'name' => '默认SWAP(MB)',
-            'description' => '分配给容器的SWAP大小 (MB) (产品可配置选项中的key应为: SWAPMB)',
+            'description' => '分配给容器的SWAP大小 (MB) (产品可配置选项中应使用此key: default_swap)',
             'key' => 'default_swap',
             'default' => '512'
         ],
         [
             'type' => 'text',
             'name' => '默认磁盘大小(GB)',
-            'description' => '根磁盘大小 (GB) (产品可配置选项中的key应为: 磁盘大小GB)',
+            'description' => '根磁盘大小 (GB) (产品可配置选项中应使用此key: default_disk_size)',
             'key' => 'default_disk_size',
             'default' => '8'
         ],
@@ -125,7 +125,7 @@ function proxmoxlxc_ConfigOptions() {
             'type' => 'dropdown',
             'name' => '默认网络IP配置',
             'options' => ['dhcp' => 'DHCP', 'static' => '静态IP'],
-            'description' => '选择IP地址配置方式 (产品可配置选项中的key应为: IP模式)',
+            'description' => '选择IP地址配置方式 (产品可配置选项中应使用此key: default_ip_mode)',
             'key' => 'default_ip_mode',
             'default' => 'dhcp'
         ],
@@ -133,7 +133,7 @@ function proxmoxlxc_ConfigOptions() {
             'type' => 'text',
             'name' => '默认静态IP CIDR后缀',
             'placeholder' => '例如: /24',
-            'description' => '如果使用静态IP, 主机名(VMID)对应的IP的CIDR后缀 (产品可配置选项中的key应为: IP_CIDR后缀)',
+            'description' => '如果使用静态IP, 主机名(VMID)对应的IP的CIDR后缀 (产品可配置选项中应使用此key: default_static_ip_cidr)',
             'key' => 'default_static_ip_cidr',
             'default' => '/24'
         ],
@@ -141,28 +141,28 @@ function proxmoxlxc_ConfigOptions() {
             'type' => 'text',
             'name' => '默认网关',
             'placeholder' => '例如: 192.168.1.1',
-            'description' => '容器的网关IP地址 (可选) (产品可配置选项中的key应为: 网关)',
+            'description' => '容器的网关IP地址 (可选) (产品可配置选项中应使用此key: default_gateway)',
             'key' => 'default_gateway',
             'default' => ''
         ],
         [
             'type' => 'yesno',
             'name' => '默认非特权容器',
-            'description' => '是否默认为非特权容器 (产品可配置选项中的key应为: 非特权容器)',
+            'description' => '是否默认为非特权容器 (产品可配置选项中应使用此key: default_unprivileged)',
             'key' => 'default_unprivileged',
             'default' => '1'
         ],
         [
             'type' => 'yesno',
             'name' => '默认启用嵌套虚拟化',
-            'description' => '是否默认启用嵌套虚拟化 (产品可配置选项中的key应为: 嵌套虚拟化)',
+            'description' => '是否默认启用嵌套虚拟化 (产品可配置选项中应使用此key: default_nesting)',
             'key' => 'default_nesting',
             'default' => '0'
         ],
         [
             'type' => 'yesno',
             'name' => '默认创建后启动',
-            'description' => '是否在创建容器后立即启动 (产品可配置选项中的key应为: 创建后启动)',
+            'description' => '是否在创建容器后立即启动 (产品可配置选项中应使用此key: default_start_after_create)',
             'key' => 'default_start_after_create',
             'default' => '1'
         ],
@@ -170,7 +170,7 @@ function proxmoxlxc_ConfigOptions() {
             'type' => 'dropdown',
             'name' => '默认控制台模式',
             'options' => ['tty' => '默认 (tty)', 'shell' => 'Shell'],
-            'description' => '选择默认的控制台模式 (产品可配置选项中的key应为: 控制台模式)',
+            'description' => '选择默认的控制台模式 (产品可配置选项中应使用此key: default_console_mode)',
             'key' => 'default_console_mode',
             'default' => 'tty'
         ],
@@ -178,7 +178,7 @@ function proxmoxlxc_ConfigOptions() {
             'type' => 'text',
             'name' => '默认VLAN ID',
             'placeholder' => '可选, 例如: 10',
-            'description' => '默认网络接口的VLAN标签 (可选) (产品可配置选项中的key应为: VLAN_ID)',
+            'description' => '默认网络接口的VLAN标签 (可选) (产品可配置选项中应使用此key: default_vlan)',
             'key' => 'default_vlan',
             'default' => ''
         ],
@@ -186,7 +186,7 @@ function proxmoxlxc_ConfigOptions() {
             'type' => 'text',
             'name' => '默认速率限制(MB/s)',
             'placeholder' => '可选, 例如: 50',
-            'description' => '默认网络速率限制 (MB/s) (可选) (产品可配置选项中的key应为: 速率限制)',
+            'description' => '默认网络速率限制 (MB/s) (可选) (产品可配置选项中应使用此key: default_rate_limit)',
             'key' => 'default_rate_limit',
             'default' => ''
         ],
@@ -194,7 +194,7 @@ function proxmoxlxc_ConfigOptions() {
             'type' => 'text',
             'name' => '额外特性',
             'placeholder' => '例如: keyctl=1,mount=cifs',
-            'description' => 'PVE LXC的额外特性参数 (可选) (产品可配置选项中的key应为: 额外特性)',
+            'description' => 'PVE LXC的额外特性参数 (可选) (产品可配置选项中应使用此key: default_features)',
             'key' => 'default_features',
             'default' => ''
         ]
@@ -235,8 +235,8 @@ function _proxmoxlxc_call_api($api_base_url, $api_key, $endpoint, $method = 'GET
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 120); // Increased timeout
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30); // Increased timeout
+    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); 
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false); 
 
@@ -279,7 +279,7 @@ function _proxmoxlxc_call_api($api_base_url, $api_key, $endpoint, $method = 'GET
     
     $decoded_response = json_decode($response_body, true);
 
-    if ($http_code >= 300) { // Consider 3xx as non-ideal for most API calls here
+    if ($http_code >= 300) { 
         $error_message = 'API请求失败';
         if (isset($decoded_response['message'])) {
             $error_message = $decoded_response['message'];
@@ -321,51 +321,43 @@ function proxmoxlxc_CreateAccount($params) {
         return ['status' => 'error', 'msg' => '密码不能为空'];
     }
     
-    $ip_mode_key = 'IP模式'; // Key in product configurable options
-    $ip_mode_default_key = 'default_ip_mode'; // Key in _ConfigOptions
-    $ip_mode = $params['configoptions'][$ip_mode_key] ?? _proxmoxlxc_get_config_value($params, $ip_mode_default_key, $config_options_definitions, 'dhcp');
-
+    $ip_mode = _proxmoxlxc_get_config_value($params, 'default_ip_mode', $config_options_definitions, 'dhcp');
     $ip_address_config = 'dhcp';
     if ($ip_mode === 'static') {
         if (empty($params['dedicatedip'])) {
             return ['status' => 'error', 'msg' => '静态IP模式需要分配一个专用IP (dedicatedip)'];
         }
-        $ip_cidr_suffix_key = 'IP_CIDR后缀';
-        $ip_cidr_suffix_default_key = 'default_static_ip_cidr';
-        $ip_cidr_suffix = $params['configoptions'][$ip_cidr_suffix_key] ?? _proxmoxlxc_get_config_value($params, $ip_cidr_suffix_default_key, $config_options_definitions, '/24');
+        $ip_cidr_suffix = _proxmoxlxc_get_config_value($params, 'default_static_ip_cidr', $config_options_definitions, '/24');
         $ip_address_config = $params['dedicatedip'] . $ip_cidr_suffix;
     }
     
-    $gateway_key = '网关';
-    $gateway_default_key = 'default_gateway';
-    $gateway = $params['configoptions'][$gateway_key] ?? _proxmoxlxc_get_config_value($params, $gateway_default_key, $config_options_definitions, null);
-
+    $gateway = _proxmoxlxc_get_config_value($params, 'default_gateway', $config_options_definitions, null);
 
     $payload = [
         'node' => $api_details['node'],
         'vmid' => (int)$vmid,
         'hostname' => $params['customfields']['hostname'] ?? $vmid,
         'password' => $password,
-        'ostemplate' => $params['configoptions']['操作系统模板'] ?? _proxmoxlxc_get_config_value($params, 'default_ostemplate', $config_options_definitions),
-        'storage' => $params['configoptions']['存储池'] ?? _proxmoxlxc_get_config_value($params, 'default_storage', $config_options_definitions),
-        'disk_size' => (int)($params['configoptions']['磁盘大小GB'] ?? _proxmoxlxc_get_config_value($params, 'default_disk_size', $config_options_definitions)),
-        'cores' => (int)($params['configoptions']['CPU核心数'] ?? _proxmoxlxc_get_config_value($params, 'default_cores', $config_options_definitions)),
-        'cpulimit' => (int)($params['configoptions']['CPU限制'] ?? _proxmoxlxc_get_config_value($params, 'default_cpulimit', $config_options_definitions)),
-        'memory' => (int)($params['configoptions']['内存MB'] ?? _proxmoxlxc_get_config_value($params, 'default_memory', $config_options_definitions)),
-        'swap' => (int)($params['configoptions']['SWAPMB'] ?? _proxmoxlxc_get_config_value($params, 'default_swap', $config_options_definitions)),
+        'ostemplate' => _proxmoxlxc_get_config_value($params, 'default_ostemplate', $config_options_definitions),
+        'storage' => _proxmoxlxc_get_config_value($params, 'default_storage', $config_options_definitions),
+        'disk_size' => (int)(_proxmoxlxc_get_config_value($params, 'default_disk_size', $config_options_definitions)),
+        'cores' => (int)(_proxmoxlxc_get_config_value($params, 'default_cores', $config_options_definitions)),
+        'cpulimit' => (int)(_proxmoxlxc_get_config_value($params, 'default_cpulimit', $config_options_definitions)),
+        'memory' => (int)(_proxmoxlxc_get_config_value($params, 'default_memory', $config_options_definitions)),
+        'swap' => (int)(_proxmoxlxc_get_config_value($params, 'default_swap', $config_options_definitions)),
         'network' => [
             'name' => 'eth0',
-            'bridge' => $params['configoptions']['网桥'] ?? _proxmoxlxc_get_config_value($params, 'default_bridge', $config_options_definitions),
+            'bridge' => _proxmoxlxc_get_config_value($params, 'default_bridge', $config_options_definitions),
             'ip' => $ip_address_config,
             'gw' => $gateway,
-            'vlan' => ($vlan_val = ($params['configoptions']['VLAN_ID'] ?? _proxmoxlxc_get_config_value($params, 'default_vlan', $config_options_definitions))) !== '' ? (int)$vlan_val : null,
-            'rate' => ($rate_val = ($params['configoptions']['速率限制'] ?? _proxmoxlxc_get_config_value($params, 'default_rate_limit', $config_options_definitions))) !== '' ? (int)$rate_val : null
+            'vlan' => ($vlan_val = _proxmoxlxc_get_config_value($params, 'default_vlan', $config_options_definitions)) !== '' ? (int)$vlan_val : null,
+            'rate' => ($rate_val = _proxmoxlxc_get_config_value($params, 'default_rate_limit', $config_options_definitions)) !== '' ? (int)$rate_val : null
         ],
-        'nesting' => (bool)($params['configoptions']['嵌套虚拟化'] ?? _proxmoxlxc_get_config_value($params, 'default_nesting', $config_options_definitions, '0')),
-        'unprivileged' => (bool)($params['configoptions']['非特权容器'] ?? _proxmoxlxc_get_config_value($params, 'default_unprivileged', $config_options_definitions, '1')),
-        'start' => (bool)($params['configoptions']['创建后启动'] ?? _proxmoxlxc_get_config_value($params, 'default_start_after_create', $config_options_definitions, '1')),
-        'console_mode' => $params['configoptions']['控制台模式'] ?? _proxmoxlxc_get_config_value($params, 'default_console_mode', $config_options_definitions, 'tty'),
-        'features' => $params['configoptions']['额外特性'] ?? _proxmoxlxc_get_config_value($params, 'default_features', $config_options_definitions, null)
+        'nesting' => (bool)(_proxmoxlxc_get_config_value($params, 'default_nesting', $config_options_definitions, '0')),
+        'unprivileged' => (bool)(_proxmoxlxc_get_config_value($params, 'default_unprivileged', $config_options_definitions, '1')),
+        'start' => (bool)(_proxmoxlxc_get_config_value($params, 'default_start_after_create', $config_options_definitions, '1')),
+        'console_mode' => _proxmoxlxc_get_config_value($params, 'default_console_mode', $config_options_definitions, 'tty'),
+        'features' => _proxmoxlxc_get_config_value($params, 'default_features', $config_options_definitions, null)
     ];
     
     if ($payload['network']['vlan'] === null) unset($payload['network']['vlan']);
@@ -421,48 +413,41 @@ function proxmoxlxc_ChangePackage($params) {
     $vmid = $params['domain'];
     $config_options_definitions = proxmoxlxc_ConfigOptions();
     
-    $ip_mode_key = 'IP模式'; 
-    $ip_mode_default_key = 'default_ip_mode';
-    $ip_mode = $params['configoptions'][$ip_mode_key] ?? _proxmoxlxc_get_config_value($params, $ip_mode_default_key, $config_options_definitions, 'dhcp');
-
+    $ip_mode = _proxmoxlxc_get_config_value($params, 'default_ip_mode', $config_options_definitions, 'dhcp');
     $ip_address_config = 'dhcp';
     if ($ip_mode === 'static') {
         if (empty($params['dedicatedip'])) {
             return ['status' => 'error', 'msg' => '静态IP模式需要分配一个专用IP (dedicatedip)'];
         }
-        $ip_cidr_suffix_key = 'IP_CIDR后缀';
-        $ip_cidr_suffix_default_key = 'default_static_ip_cidr';
-        $ip_cidr_suffix = $params['configoptions'][$ip_cidr_suffix_key] ?? _proxmoxlxc_get_config_value($params, $ip_cidr_suffix_default_key, $config_options_definitions, '/24');
+        $ip_cidr_suffix = _proxmoxlxc_get_config_value($params, 'default_static_ip_cidr', $config_options_definitions, '/24');
         $ip_address_config = $params['dedicatedip'] . $ip_cidr_suffix;
     }
     
-    $gateway_key = '网关';
-    $gateway_default_key = 'default_gateway';
-    $gateway = $params['configoptions'][$gateway_key] ?? _proxmoxlxc_get_config_value($params, $gateway_default_key, $config_options_definitions, null);
+    $gateway = _proxmoxlxc_get_config_value($params, 'default_gateway', $config_options_definitions, null);
 
     $payload = [
-        'ostemplate' => $params['configoptions']['操作系统模板'] ?? _proxmoxlxc_get_config_value($params, 'default_ostemplate', $config_options_definitions),
+        'ostemplate' => _proxmoxlxc_get_config_value($params, 'default_ostemplate', $config_options_definitions),
         'hostname' => $params['customfields']['hostname'] ?? $vmid,
         'password' => $params['password'], 
-        'storage' => $params['configoptions']['存储池'] ?? _proxmoxlxc_get_config_value($params, 'default_storage', $config_options_definitions),
-        'disk_size' => (int)($params['configoptions']['磁盘大小GB'] ?? _proxmoxlxc_get_config_value($params, 'default_disk_size', $config_options_definitions)),
-        'cores' => (int)($params['configoptions']['CPU核心数'] ?? _proxmoxlxc_get_config_value($params, 'default_cores', $config_options_definitions)),
-        'cpulimit' => (int)($params['configoptions']['CPU限制'] ?? _proxmoxlxc_get_config_value($params, 'default_cpulimit', $config_options_definitions)),
-        'memory' => (int)($params['configoptions']['内存MB'] ?? _proxmoxlxc_get_config_value($params, 'default_memory', $config_options_definitions)),
-        'swap' => (int)($params['configoptions']['SWAPMB'] ?? _proxmoxlxc_get_config_value($params, 'default_swap', $config_options_definitions)),
+        'storage' => _proxmoxlxc_get_config_value($params, 'default_storage', $config_options_definitions),
+        'disk_size' => (int)(_proxmoxlxc_get_config_value($params, 'default_disk_size', $config_options_definitions)),
+        'cores' => (int)(_proxmoxlxc_get_config_value($params, 'default_cores', $config_options_definitions)),
+        'cpulimit' => (int)(_proxmoxlxc_get_config_value($params, 'default_cpulimit', $config_options_definitions)),
+        'memory' => (int)(_proxmoxlxc_get_config_value($params, 'default_memory', $config_options_definitions)),
+        'swap' => (int)(_proxmoxlxc_get_config_value($params, 'default_swap', $config_options_definitions)),
         'network' => [
             'name' => 'eth0',
-            'bridge' => $params['configoptions']['网桥'] ?? _proxmoxlxc_get_config_value($params, 'default_bridge', $config_options_definitions),
+            'bridge' => _proxmoxlxc_get_config_value($params, 'default_bridge', $config_options_definitions),
             'ip' => $ip_address_config,
             'gw' => $gateway,
-            'vlan' => ($vlan_val = ($params['configoptions']['VLAN_ID'] ?? _proxmoxlxc_get_config_value($params, 'default_vlan', $config_options_definitions))) !== '' ? (int)$vlan_val : null,
-            'rate' => ($rate_val = ($params['configoptions']['速率限制'] ?? _proxmoxlxc_get_config_value($params, 'default_rate_limit', $config_options_definitions))) !== '' ? (int)$rate_val : null
+            'vlan' => ($vlan_val = _proxmoxlxc_get_config_value($params, 'default_vlan', $config_options_definitions)) !== '' ? (int)$vlan_val : null,
+            'rate' => ($rate_val = _proxmoxlxc_get_config_value($params, 'default_rate_limit', $config_options_definitions)) !== '' ? (int)$rate_val : null
         ],
-        'nesting' => (bool)($params['configoptions']['嵌套虚拟化'] ?? _proxmoxlxc_get_config_value($params, 'default_nesting', $config_options_definitions, '0')),
-        'unprivileged' => (bool)($params['configoptions']['非特权容器'] ?? _proxmoxlxc_get_config_value($params, 'default_unprivileged', $config_options_definitions, '1')),
+        'nesting' => (bool)(_proxmoxlxc_get_config_value($params, 'default_nesting', $config_options_definitions, '0')),
+        'unprivileged' => (bool)(_proxmoxlxc_get_config_value($params, 'default_unprivileged', $config_options_definitions, '1')),
         'start' => true, 
-        'console_mode' => $params['configoptions']['控制台模式'] ?? _proxmoxlxc_get_config_value($params, 'default_console_mode', $config_options_definitions, 'tty'),
-        'features' => $params['configoptions']['额外特性'] ?? _proxmoxlxc_get_config_value($params, 'default_features', $config_options_definitions, null)
+        'console_mode' => _proxmoxlxc_get_config_value($params, 'default_console_mode', $config_options_definitions, 'tty'),
+        'features' => _proxmoxlxc_get_config_value($params, 'default_features', $config_options_definitions, null)
     ];
     
     if ($payload['network']['vlan'] === null) unset($payload['network']['vlan']);
@@ -543,59 +528,48 @@ function proxmoxlxc_Reinstall($params) {
     $vmid = $params['domain'];
     $config_options_definitions = proxmoxlxc_ConfigOptions();
 
-    $new_ostemplate = $params['configoptions']['操作系统模板'] ?? null;
-    
-    if (empty($new_ostemplate) && !empty($params['reinstall_os_value'])) {
-         $new_ostemplate = $params['reinstall_os_value'];
-    }
+    $new_ostemplate = _proxmoxlxc_get_config_value($params, 'default_ostemplate', $config_options_definitions);
 
     if (empty($new_ostemplate)) {
-        return ['status' => 'error', 'msg' => '重装失败: 未能确定新的操作系统模板。请确保产品可配置选项中已正确选择，或ZJMF正确传递了模板值。'];
+        return ['status' => 'error', 'msg' => '重装失败: 未能确定新的操作系统模板。请确保产品可配置选项中已正确选择。'];
     }
     
-    $ip_mode_key = 'IP模式'; 
-    $ip_mode_default_key = 'default_ip_mode';
-    $ip_mode = $params['configoptions'][$ip_mode_key] ?? _proxmoxlxc_get_config_value($params, $ip_mode_default_key, $config_options_definitions, 'dhcp');
-
+    $ip_mode = _proxmoxlxc_get_config_value($params, 'default_ip_mode', $config_options_definitions, 'dhcp');
     $ip_address_config = 'dhcp';
     if ($ip_mode === 'static') {
         if (empty($params['dedicatedip'])) {
             return ['status' => 'error', 'msg' => '静态IP模式需要分配一个专用IP (dedicatedip)'];
         }
-        $ip_cidr_suffix_key = 'IP_CIDR后缀';
-        $ip_cidr_suffix_default_key = 'default_static_ip_cidr';
-        $ip_cidr_suffix = $params['configoptions'][$ip_cidr_suffix_key] ?? _proxmoxlxc_get_config_value($params, $ip_cidr_suffix_default_key, $config_options_definitions, '/24');
+        $ip_cidr_suffix = _proxmoxlxc_get_config_value($params, 'default_static_ip_cidr', $config_options_definitions, '/24');
         $ip_address_config = $params['dedicatedip'] . $ip_cidr_suffix;
     }
     
-    $gateway_key = '网关';
-    $gateway_default_key = 'default_gateway';
-    $gateway = $params['configoptions'][$gateway_key] ?? _proxmoxlxc_get_config_value($params, $gateway_default_key, $config_options_definitions, null);
+    $gateway = _proxmoxlxc_get_config_value($params, 'default_gateway', $config_options_definitions, null);
 
 
     $payload = [
         'ostemplate' => $new_ostemplate,
         'hostname' => $params['customfields']['hostname'] ?? $vmid,
         'password' => $params['password'],
-        'storage' => $params['configoptions']['存储池'] ?? _proxmoxlxc_get_config_value($params, 'default_storage', $config_options_definitions),
-        'disk_size' => (int)($params['configoptions']['磁盘大小GB'] ?? _proxmoxlxc_get_config_value($params, 'default_disk_size', $config_options_definitions)),
-        'cores' => (int)($params['configoptions']['CPU核心数'] ?? _proxmoxlxc_get_config_value($params, 'default_cores', $config_options_definitions)),
-        'cpulimit' => (int)($params['configoptions']['CPU限制'] ?? _proxmoxlxc_get_config_value($params, 'default_cpulimit', $config_options_definitions)),
-        'memory' => (int)($params['configoptions']['内存MB'] ?? _proxmoxlxc_get_config_value($params, 'default_memory', $config_options_definitions)),
-        'swap' => (int)($params['configoptions']['SWAPMB'] ?? _proxmoxlxc_get_config_value($params, 'default_swap', $config_options_definitions)),
+        'storage' => _proxmoxlxc_get_config_value($params, 'default_storage', $config_options_definitions),
+        'disk_size' => (int)(_proxmoxlxc_get_config_value($params, 'default_disk_size', $config_options_definitions)),
+        'cores' => (int)(_proxmoxlxc_get_config_value($params, 'default_cores', $config_options_definitions)),
+        'cpulimit' => (int)(_proxmoxlxc_get_config_value($params, 'default_cpulimit', $config_options_definitions)),
+        'memory' => (int)(_proxmoxlxc_get_config_value($params, 'default_memory', $config_options_definitions)),
+        'swap' => (int)(_proxmoxlxc_get_config_value($params, 'default_swap', $config_options_definitions)),
         'network' => [
             'name' => 'eth0',
-            'bridge' => $params['configoptions']['网桥'] ?? _proxmoxlxc_get_config_value($params, 'default_bridge', $config_options_definitions),
+            'bridge' => _proxmoxlxc_get_config_value($params, 'default_bridge', $config_options_definitions),
             'ip' => $ip_address_config,
             'gw' => $gateway,
-            'vlan' => ($vlan_val = ($params['configoptions']['VLAN_ID'] ?? _proxmoxlxc_get_config_value($params, 'default_vlan', $config_options_definitions))) !== '' ? (int)$vlan_val : null,
-            'rate' => ($rate_val = ($params['configoptions']['速率限制'] ?? _proxmoxlxc_get_config_value($params, 'default_rate_limit', $config_options_definitions))) !== '' ? (int)$rate_val : null
+            'vlan' => ($vlan_val = _proxmoxlxc_get_config_value($params, 'default_vlan', $config_options_definitions)) !== '' ? (int)$vlan_val : null,
+            'rate' => ($rate_val = _proxmoxlxc_get_config_value($params, 'default_rate_limit', $config_options_definitions)) !== '' ? (int)$rate_val : null
         ],
-        'nesting' => (bool)($params['configoptions']['嵌套虚拟化'] ?? _proxmoxlxc_get_config_value($params, 'default_nesting', $config_options_definitions, '0')),
-        'unprivileged' => (bool)($params['configoptions']['非特权容器'] ?? _proxmoxlxc_get_config_value($params, 'default_unprivileged', $config_options_definitions, '1')),
+        'nesting' => (bool)(_proxmoxlxc_get_config_value($params, 'default_nesting', $config_options_definitions, '0')),
+        'unprivileged' => (bool)(_proxmoxlxc_get_config_value($params, 'default_unprivileged', $config_options_definitions, '1')),
         'start' => true,
-        'console_mode' => $params['configoptions']['控制台模式'] ?? _proxmoxlxc_get_config_value($params, 'default_console_mode', $config_options_definitions, 'tty'),
-        'features' => $params['configoptions']['额外特性'] ?? _proxmoxlxc_get_config_value($params, 'default_features', $config_options_definitions, null)
+        'console_mode' => _proxmoxlxc_get_config_value($params, 'default_console_mode', $config_options_definitions, 'tty'),
+        'features' => _proxmoxlxc_get_config_value($params, 'default_features', $config_options_definitions, null)
     ];
     
     if ($payload['network']['vlan'] === null) unset($payload['network']['vlan']);
@@ -621,27 +595,19 @@ function proxmoxlxc_Vnc($params) {
         $console_data = $response['data'];
         $pve_host = $console_data['host'];
         
-        $api_url_parts = parse_url($api_details['base_url']);
-        $pve_api_port = $api_url_parts['port'] ?? ($api_url_parts['scheme'] === 'https' ? 443 : 80);
-
-        $backend_config_response = _proxmoxlxc_call_api($api_details['base_url'], $api_details['api_key'], "/", 'GET');
-        $pve_public_port = $params['server_port'] ?? 8006; // Default PVE web UI port, ideally fetched or configured
-
-        if(isset($backend_config_response['service']) && strpos(strtolower($backend_config_response['service']), "proxmox lxc") !== false){
-             // Could potentially fetch PVE host/port from a /config endpoint on backend if it exposed PVE settings
-        }
-
+        $pve_public_port = $params['server_port'] ?? 8006; 
 
         $protocol = (!empty($params['server_secure']) && $params['server_secure'] !== 'off') ? 'https' : 'http';
+        // Attempt to use the scheme from the API URL if it's set for the PVE host.
+        $api_url_parts = parse_url($api_details['base_url']);
          if (isset($api_url_parts['scheme'])) {
-            $protocol = $api_url_parts['scheme']; // Use scheme from API URL if available for PVE host
+            $pve_console_protocol = $api_url_parts['scheme'];
+        } else {
+            $pve_console_protocol = $protocol; // Fallback to server_secure based protocol
         }
 
-
         $ticket_encoded = urlencode($console_data['ticket']);
-        // Path assumes API is on same host/port as PVE GUI or PVE API itself is used for websocket.
-        // This URL structure is standard for Proxmox VE.
-        $vnc_url = "{$protocol}://{$pve_host}:{$pve_public_port}/?console=lxc&novnc=1&vmid={$vmid}&node={$api_details['node']}&resize=scale&path=api2/json/nodes/{$api_details['node']}/lxc/{$vmid}/vncwebsocket/port/{$console_data['port']}/vncticket/{$ticket_encoded}";
+        $vnc_url = "{$pve_console_protocol}://{$pve_host}:{$pve_public_port}/?console=lxc&novnc=1&vmid={$vmid}&node={$api_details['node']}&resize=scale&path=api2/json/nodes/{$api_details['node']}/lxc/{$vmid}/vncwebsocket/port/{$console_data['port']}/vncticket/{$ticket_encoded}";
         return ['status' => 'success', 'url' => $vnc_url];
     }
     return ['status' => 'error', 'msg' => $response['message'] ?? $response['msg'] ?? '获取VNC控制台失败'];
@@ -652,11 +618,10 @@ function proxmoxlxc_Status($params) {
     $vmid = $params['domain'];
     $response = _proxmoxlxc_call_api($api_details['base_url'], $api_details['api_key'], "containers/{$api_details['node']}/{$vmid}/status", 'GET');
 
-    if (isset($response['vmid'])) { // Check if response looks like a valid status object
+    if (isset($response['vmid'])) { 
         $status_map = [
             'running' => ['status' => 'on', 'des' => '运行中'],
             'stopped' => ['status' => 'off', 'des' => '已关机'],
-            'suspended' => ['status' => 'suspend', 'des' => '已暂停'], // PVE LXC doesn't typically 'suspend' like VMs
         ];
         $pve_status = strtolower($response['status'] ?? 'unknown');
         $client_status = $status_map[$pve_status] ?? ['status' => 'unknown', 'des' => '未知 (' . ($response['status'] ?? 'N/A') . ')'];
@@ -676,27 +641,44 @@ function proxmoxlxc_ClientArea($params) {
 
 function proxmoxlxc_ClientAreaOutput($params, $key) {
     $api_details = _proxmoxlxc_get_api_details($params);
-    $vmid = $params['domain'];
-    $node = $api_details['node'];
-    $vars = ['params' => $params, 'MODULE_CUSTOM_API' => $params['MODULE_CUSTOM_API'] ?? '', 'vmid' => $vmid, 'node' => $node];
-    $base_client_api_url = ($params['systemurl'] ?? '/') . 'index.php?m=proxmoxlxc&custom_action=true&hostid=' . ($params['hostid'] ?? '');
+    $vmid = htmlspecialchars($params['domain'] ?? '', ENT_QUOTES);
+    $node = htmlspecialchars($api_details['node'] ?? '', ENT_QUOTES);
+    $hostid_for_js = htmlspecialchars($params['hostid'] ?? '', ENT_QUOTES);
+    
+    $module_custom_api_url = htmlspecialchars($params['MODULE_CUSTOM_API'] ?? '', ENT_QUOTES);
+    if (empty($module_custom_api_url)) {
+         // Fallback if $MODULE_CUSTOM_API is not provided by ZJMF when returning raw HTML
+         $system_url = rtrim(htmlspecialchars($params['systemurl'] ?? '/', ENT_QUOTES), '/');
+         $module_custom_api_url = $system_url . '/clientarea.php?action=productdetails&id=' . $hostid_for_js . '&modop=custom';
+    }
 
 
     if ($key == 'info') {
         $status_response = _proxmoxlxc_call_api($api_details['base_url'], $api_details['api_key'], "containers/{$node}/{$vmid}/status", 'GET');
         $html = "<h3>实例概览</h3>";
         if(isset($status_response['vmid'])) {
-            $html .= "<p><strong>VMID:</strong> {$status_response['vmid']}</p>";
-            $html .= "<p><strong>节点:</strong> {$status_response['node']}</p>";
-            $html .= "<p><strong>状态:</strong> {$status_response['status']}</p>";
-            $html .= "<p><strong>名称:</strong> " . htmlspecialchars($status_response['name'] ?? '') . "</p>";
+            $html .= "<p><strong>VMID:</strong> " . htmlspecialchars($status_response['vmid'] ?? '', ENT_QUOTES) . "</p>";
+            $html .= "<p><strong>节点:</strong> " . htmlspecialchars($status_response['node'] ?? '', ENT_QUOTES) . "</p>";
+            $html .= "<p><strong>状态:</strong> " . htmlspecialchars($status_response['status'] ?? '', ENT_QUOTES) . "</p>";
+            $html .= "<p><strong>名称:</strong> " . htmlspecialchars($status_response['name'] ?? '', ENT_QUOTES) . "</p>";
             $html .= "<p><strong>CPU使用率:</strong> " . round(($status_response['cpu'] ?? 0) * 100, 2) . "%</p>";
             $html .= "<p><strong>内存使用:</strong> " . round(($status_response['mem'] ?? 0) / (1024*1024), 2) . " MB / " . round(($status_response['maxmem'] ?? 0) / (1024*1024), 2) . " MB</p>";
-            $html .= "<p><strong>运行时间:</strong> " . ($status_response['uptime'] ? gmdate("H:i:s", $status_response['uptime']) : 'N/A') . "</p>";
+            $uptime_seconds = $status_response['uptime'] ?? 0;
+            $days = floor($uptime_seconds / (60 * 60 * 24));
+            $hours = floor(($uptime_seconds % (60 * 60 * 24)) / (60 * 60));
+            $minutes = floor(($uptime_seconds % (60 * 60)) / 60);
+            $seconds = $uptime_seconds % 60;
+            $uptime_string = '';
+            if ($days > 0) $uptime_string .= $days . '天 ';
+            if ($hours > 0 || $days > 0) $uptime_string .= $hours . '小时 ';
+            if ($minutes > 0 || $hours > 0 || $days > 0) $uptime_string .= $minutes . '分钟 ';
+            $uptime_string .= $seconds . '秒';
+            $html .= "<p><strong>运行时间:</strong> " . ($uptime_seconds ? $uptime_string : 'N/A') . "</p>";
+
         } else {
-            $html .= "<div class='alert alert-danger'>获取实例信息失败: " . htmlspecialchars($status_response['detail'] ?? $status_response['message'] ?? '未知错误') . "</div>";
+            $html .= "<div class='alert alert-danger'>获取实例信息失败: " . htmlspecialchars($status_response['detail'] ?? $status_response['message'] ?? $status_response['msg'] ?? '未知错误', ENT_QUOTES) . "</div>";
         }
-         return ['templatefile' => 'proxmoxlxc_clientarea_info', 'vars' => $vars, 'template' => $html]; // ZJMF uses 'templatefile', not 'template' for direct HTML
+        return $html;
     }
 
     if ($key == 'nat_rules') {
@@ -706,15 +688,19 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
         if (isset($rules_response['success']) && $rules_response['success'] && isset($rules_response['data'])) {
             $rules = $rules_response['data'];
         } elseif(isset($rules_response['msg'])) {
-            $error_message_rules = $rules_response['msg'];
+            $error_message_rules = htmlspecialchars($rules_response['msg'], ENT_QUOTES);
+        } elseif(isset($rules_response['message'])) {
+            $error_message_rules = htmlspecialchars($rules_response['message'], ENT_QUOTES);
         } else {
             $error_message_rules = '加载NAT规则时发生未知错误。';
         }
 
+        $js_module_custom_api_url = $module_custom_api_url; // Already HTML-escaped
+
         $html = <<<HTML
 <style>
     .nat-form-group { margin-bottom: 15px; }
-    .nat-form-control { width: 100%; padding: 6px 12px; font-size: 14px; line-height: 1.42857143; color: #555; background-color: #fff; background-image: none; border: 1px solid #ccc; border-radius: 4px; }
+    .nat-form-control { display: block; width: 100%; height: 34px; padding: 6px 12px; font-size: 14px; line-height: 1.42857143; color: #555; background-color: #fff; background-image: none; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
     .nat-btn { display: inline-block; margin-bottom: 0; font-weight: normal; text-align: center; vertical-align: middle; cursor: pointer; background-image: none; border: 1px solid transparent; white-space: nowrap; padding: 6px 12px; font-size: 14px; line-height: 1.42857143; border-radius: 4px; user-select: none; }
     .nat-btn-primary { color: #fff; background-color: #337ab7; border-color: #2e6da4; }
     .nat-btn-danger { color: #fff; background-color: #d9534f; border-color: #d43f3a; }
@@ -726,7 +712,7 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
     .nat-alert-warning { color: #8a6d3b; background-color: #fcf8e3; border-color: #faebcc; }
     .nat-table { width: 100%; max-width: 100%; margin-bottom: 20px; background-color: transparent; border-collapse: collapse; border-spacing: 0; }
     .nat-table th, .nat-table td { padding: 8px; line-height: 1.42857143; vertical-align: top; border-top: 1px solid #ddd; }
-    .nat-table th { text-align: left; }
+    .nat-table th { text-align: left; font-weight: bold; }
     .nat-table-striped tbody tr:nth-of-type(odd) { background-color: #f9f9f9; }
     .nat-label { display: inline; padding: .2em .6em .3em; font-size: 75%; font-weight: bold; line-height: 1; color: #fff; text-align: center; white-space: nowrap; vertical-align: baseline; border-radius: .25em; }
     .nat-label-success { background-color: #5cb85c; }
@@ -742,44 +728,55 @@ function handlePmxApiResponse(formId, responseText) {
     try {
         res = JSON.parse(responseText);
     } catch (e) {
-        res = { status: 'error', msg: '响应解析错误: ' + responseText };
+        messageDiv.innerHTML = '<div class="nat-alert nat-alert-danger">响应解析错误</div>';
+        console.error("Raw response causing parse error: ", responseText);
+        return;
     }
 
     if (res.status === 'success') {
-        messageDiv.innerHTML = '<div class="nat-alert nat-alert-success">' + (res.msg || '操作成功') + '</div>';
+        messageDiv.innerHTML = '<div class="nat-alert nat-alert-success">' + (res.msg ? escapeHtml(res.msg) : '操作成功') + '</div>';
         if (formId.startsWith('deleteNatRuleForm_') || formId === 'addNatRuleForm') {
             setTimeout(() => window.location.reload(), 1500);
         }
     } else {
-        messageDiv.innerHTML = '<div class="nat-alert nat-alert-danger">' + (res.msg || '操作失败') + '</div>';
+        messageDiv.innerHTML = '<div class="nat-alert nat-alert-danger">' + (res.msg ? escapeHtml(res.msg) : '操作失败') + '</div>';
     }
+}
+
+function escapeHtml(unsafe) {
+    if (typeof unsafe !== 'string') return '';
+    return unsafe
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
 }
 
 function submitPmxNatForm(event, formId, funcName) {
     event.preventDefault();
     const form = document.getElementById(formId);
     const formData = new FormData(form);
-    formData.append('func', funcName); 
-    formData.append('hostid', '{$params['hostid']}'); 
+    // formData.append('func', funcName); // ZJMF adds 'func' from action string in some setups
+    // formData.append('hostid', '{$hostid_for_js}'); // ZJMF adds 'hostid'
     
     const messageDivId = formId + 'Message';
     const messageDiv = document.getElementById(messageDivId);
     if(messageDiv) messageDiv.innerHTML = '<div class="nat-alert nat-alert-info">处理中...</div>';
 
-    fetch('{$base_client_api_url}&action=' + funcName, { // Using custom_action for ZJMF
+    const fetchUrl = '{$js_module_custom_api_url}&func=' + funcName;
+
+    fetch(fetchUrl, {
         method: 'POST',
         body: new URLSearchParams(formData).toString(),
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            // ZJMF usually handles auth via session for client area custom function calls linked to hostid.
-            // If JWT is needed and provided in $params['jwt_token_for_module_api']:
-            // 'Authorization': 'Bearer ' + '{$params['jwt_token_for_module_api']}' 
         }
     })
     .then(response => response.text())
     .then(text => handlePmxApiResponse(formId, text))
     .catch(error => {
-        if(messageDiv) messageDiv.innerHTML = '<div class="nat-alert nat-alert-danger">请求错误: ' + error + '</div>';
+        if(messageDiv) messageDiv.innerHTML = '<div class="nat-alert nat-alert-danger">请求错误: ' + escapeHtml(String(error)) + '</div>';
     });
 }
 </script>
@@ -814,7 +811,7 @@ function submitPmxNatForm(event, formId, funcName) {
 <h4>现有规则</h4>
 HTML;
         if (!empty($error_message_rules)) {
-            $html .= "<div class='nat-alert nat-alert-danger'>加载规则失败: " . htmlspecialchars($error_message_rules) . "</div>";
+            $html .= "<div class='nat-alert nat-alert-danger'>加载规则失败: {$error_message_rules}</div>";
         } elseif (empty($rules)) {
             $html .= "<p>没有找到NAT规则。</p>";
         } else {
@@ -835,21 +832,22 @@ HTML;
     <tbody>
 HTML;
             foreach ($rules as $rule) {
+                $rule_id_js = htmlspecialchars($rule['id'] ?? '', ENT_QUOTES);
                 $enabledText = ($rule['enabled'] ?? false) ? '<span class="nat-label nat-label-success">已启用</span>' : '<span class="nat-label nat-label-danger">已禁用</span>';
                 $html .= "<tr>";
-                $html .= "<td>{$rule['id']}</td>";
-                $html .= "<td>{$rule['host_port']}</td>";
-                $html .= "<td>" . htmlspecialchars($rule['container_ip_at_creation'] ?? 'N/A') . ":{$rule['container_port']}</td>";
-                $html .= "<td>" . strtoupper(htmlspecialchars($rule['protocol'] ?? 'N/A')) . "</td>";
-                $html .= "<td>" . htmlspecialchars($rule['description'] ?? '') . "</td>";
+                $html .= "<td>" . htmlspecialchars($rule['id'] ?? '', ENT_QUOTES) . "</td>";
+                $html .= "<td>" . htmlspecialchars($rule['host_port'] ?? '', ENT_QUOTES) . "</td>";
+                $html .= "<td>" . htmlspecialchars($rule['container_ip_at_creation'] ?? 'N/A', ENT_QUOTES) . ":" . htmlspecialchars($rule['container_port'] ?? '', ENT_QUOTES) . "</td>";
+                $html .= "<td>" . strtoupper(htmlspecialchars($rule['protocol'] ?? 'N/A', ENT_QUOTES)) . "</td>";
+                $html .= "<td>" . htmlspecialchars($rule['description'] ?? '', ENT_QUOTES) . "</td>";
                 $html .= "<td>{$enabledText}</td>";
-                $html .= "<td>" . htmlspecialchars($rule['created_at'] ?? 'N/A') . "</td>";
+                $html .= "<td>" . htmlspecialchars($rule['created_at'] ?? 'N/A', ENT_QUOTES) . "</td>";
                 $html .= "<td>
-                            <form id='deleteNatRuleForm_{$rule['id']}' style='display:inline;' onsubmit=\"submitPmxNatForm(event, 'deleteNatRuleForm_{$rule['id']}', 'DeleteNatRule');\">
-                                <input type='hidden' name='rule_id' value='{$rule['id']}'>
+                            <form id='deleteNatRuleForm_{$rule_id_js}' style='display:inline;' onsubmit=\"submitPmxNatForm(event, 'deleteNatRuleForm_{$rule_id_js}', 'DeleteNatRule');\">
+                                <input type='hidden' name='rule_id' value='{$rule_id_js}'>
                                 <button type='submit' class='nat-btn nat-btn-danger nat-btn-xs'>删除</button>
                             </form>
-                            <div id='deleteNatRuleForm_{$rule['id']}Message' style='margin-top:5px; font-size:0.9em;'></div>
+                            <div id='deleteNatRuleForm_{$rule_id_js}Message' style='margin-top:5px; font-size:0.9em;'></div>
                           </td>";
                 $html .= "</tr>";
             }
@@ -858,7 +856,7 @@ HTML;
 </table>
 HTML;
         }
-        return ['templatefile' => 'proxmoxlxc_clientarea_nat_rules', 'vars' => $vars, 'template' => $html];
+        return $html;
     }
     return '';
 }
@@ -872,9 +870,6 @@ function proxmoxlxc_AllowFunction() {
 }
 
 function proxmoxlxc_CreateNatRule($params) {
-    // ZJMF custom functions called via clientarea AJAX typically don't run through the full 'return' mechanism
-    // for success/error strings, but rather expect direct output (often JSON).
-    // So, we'll echo JSON and exit.
     header('Content-Type: application/json');
     $api_details = _proxmoxlxc_get_api_details($params);
     $vmid = $params['domain'];
