@@ -1,0 +1,192 @@
+<style>
+    .nat-form-group { margin-bottom: 15px; }
+    .nat-form-control { display: block; width: 100%; height: 34px; padding: 6px 12px; font-size: 14px; line-height: 1.42857143; color: #555; background-color: #fff; background-image: none; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    .nat-btn { display: inline-block; margin-bottom: 0; font-weight: normal; text-align: center; vertical-align: middle; cursor: pointer; background-image: none; border: 1px solid transparent; white-space: nowrap; padding: 6px 12px; font-size: 14px; line-height: 1.42857143; border-radius: 4px; user-select: none; }
+    .nat-btn-primary { color: #fff; background-color: #337ab7; border-color: #2e6da4; }
+    .nat-btn-danger { color: #fff; background-color: #d9534f; border-color: #d43f3a; }
+    .nat-btn-xs { padding: 1px 5px; font-size: 12px; line-height: 1.5; border-radius: 3px; }
+    .nat-alert { padding: 15px; margin-bottom: 20px; border: 1px solid transparent; border-radius: 4px; }
+    .nat-alert-success { color: #3c763d; background-color: #dff0d8; border-color: #d6e9c6; }
+    .nat-alert-danger { color: #a94442; background-color: #f2dede; border-color: #ebccd1; }
+    .nat-alert-info { color: #31708f; background-color: #d9edf7; border-color: #bce8f1; }
+    .nat-alert-warning { color: #8a6d3b; background-color: #fcf8e3; border-color: #faebcc; }
+    .nat-table { width: 100%; max-width: 100%; margin-bottom: 20px; background-color: transparent; border-collapse: collapse; border-spacing: 0; }
+    .nat-table th, .nat-table td { padding: 8px; line-height: 1.42857143; vertical-align: top; border-top: 1px solid #ddd; }
+    .nat-table th { text-align: left; font-weight: bold; }
+    .nat-table-striped tbody tr:nth-of-type(odd) { background-color: #f9f9f9; }
+    .nat-label { display: inline; padding: .2em .6em .3em; font-size: 75%; font-weight: bold; line-height: 1; color: #fff; text-align: center; white-space: nowrap; vertical-align: baseline; border-radius: .25em; }
+    .nat-label-success { background-color: #5cb85c; }
+    .nat-label-danger { background-color: #d9534f; }
+</style>
+<script>
+function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return null;
+}
+
+function handlePmxApiResponse(formId, responseText) {
+    const messageDivId = formId + 'Message';
+    const messageDiv = document.getElementById(messageDivId);
+    if (!messageDiv) { console.error('Message div not found: ' + messageDivId); return; }
+    
+    let res = {};
+    try {
+        res = JSON.parse(responseText);
+    } catch (e) {
+        messageDiv.innerHTML = '<div class="nat-alert nat-alert-danger">响应解析错误: ' + escapeHtml(e.message) + '</div>';
+        console.error("Raw response causing parse error: ", responseText);
+        return;
+    }
+
+    if (res.status === 'success') {
+        messageDiv.innerHTML = '<div class="nat-alert nat-alert-success">' + (res.msg ? escapeHtml(res.msg) : '操作成功') + '</div>';
+        if (formId.startsWith('deleteNatRuleForm_') || formId === 'addNatRuleForm' || formId === 'pingTestForm') {
+            setTimeout(() => window.location.reload(), 1500);
+        }
+    } else {
+        messageDiv.innerHTML = '<div class="nat-alert nat-alert-danger">' + (res.msg ? escapeHtml(res.msg) : '操作失败') + '</div>';
+    }
+}
+
+function escapeHtml(unsafe) {
+    if (typeof unsafe !== 'string') return String(unsafe);
+    return unsafe
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+}
+
+function submitPmxNatForm(event, formId, funcName) {
+    event.preventDefault();
+    const form = document.getElementById(formId);
+    const formData = form ? new FormData(form) : new FormData();
+    
+    const messageDivId = formId + 'Message';
+    const messageDiv = document.getElementById(messageDivId);
+    if(messageDiv) messageDiv.innerHTML = '<div class="nat-alert nat-alert-info">处理中...</div>';
+
+    const fetchUrl = '<?php echo $js_module_custom_api_url; ?>&func=' + funcName;
+    
+    const jwtToken = getCookie('ZJMF_474FFBE2DC4BDFD9'); // 请根据实际情况修改ZJMF JWT Cookie名称
+
+    const requestHeaders = {
+        'Content-Type': 'application/x-www-form-urlencoded'
+    };
+
+    if (jwtToken) {
+        requestHeaders['Authorization'] = 'Bearer ' + jwtToken; // 或 'JWT ' + jwtToken，取决于ZJMF的实现
+    } else {
+        console.warn('ZJMF JWT cookie not found. Request might fail if auth is required.');
+    }
+
+    fetch(fetchUrl, {
+        method: 'POST',
+        body: new URLSearchParams(formData).toString(),
+        headers: requestHeaders
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                 try {
+                    const errorJson = JSON.parse(text);
+                    throw new Error(errorJson.msg || errorJson.message || `HTTP error ${response.status}`);
+                 } catch (e) {
+                    let detail = text.substring(0, 200);
+                    if (text.toLowerCase().includes('<html')) {
+                         detail = "服务器返回了HTML错误页面。";
+                    }
+                    throw new Error(`HTTP error ${response.status}. Detail: ${detail}`);
+                 }
+            });
+        }
+        return response.text();
+    })
+    .then(text => handlePmxApiResponse(formId, text))
+    .catch(error => {
+        if(messageDiv) messageDiv.innerHTML = '<div class="nat-alert nat-alert-danger">请求错误: ' + escapeHtml(error.message) + '</div>';
+        console.error('Fetch error for ' + funcName + ':', error);
+    });
+}
+</script>
+
+<div style="margin-bottom: 20px;">
+    <form id="pingTestForm" onsubmit="submitPmxNatForm(event, 'pingTestForm', 'pingtest');">
+        <button type="submit" class="nat-btn">测试 PingTest 自定义函数</button>
+    </form>
+    <div id="pingTestFormMessage" style="margin-top:10px;"></div>
+</div>
+
+<h3>NAT规则管理 (主机端口转发到容器)</h3>
+<p class="nat-alert nat-alert-warning"><strong>注意:</strong> 在此添加的规则会尝试获取容器当前IP进行配置。如果容器IP发生变化 (例如DHCP租约更新), 规则可能需要重新同步或手动更新。</p>
+<h4>添加新规则</h4>
+<form id="addNatRuleForm" onsubmit="submitPmxNatForm(event, 'addNatRuleForm', 'createnatrule');">
+    <div class="nat-form-group">
+        <label for="host_port">主机端口:</label>
+        <input type="number" class="nat-form-control" id="host_port" name="host_port" required min="1" max="65535">
+    </div>
+    <div class="nat-form-group">
+        <label for="container_port">容器端口:</label>
+        <input type="number" class="nat-form-control" id="container_port" name="container_port" required min="1" max="65535">
+    </div>
+    <div class="nat-form-group">
+        <label for="protocol">协议:</label>
+        <select class="nat-form-control" id="protocol" name="protocol">
+            <option value="tcp">TCP</option>
+            <option value="udp">UDP</option>
+        </select>
+    </div>
+    <div class="nat-form-group">
+        <label for="description">描述 (可选):</label>
+        <input type="text" class="nat-form-control" id="description" name="description" maxlength="200">
+    </div>
+    <button type="submit" class="nat-btn nat-btn-primary">添加规则</button>
+    <div id="addNatRuleFormMessage" style="margin-top:10px;"></div>
+</form>
+
+<h4>现有规则</h4>
+<?php if (!empty($error_message_rules)): ?>
+    <div class='nat-alert nat-alert-danger'>加载规则失败: <?php echo $error_message_rules; ?></div>
+<?php elseif (empty($rules)): ?>
+    <p>没有找到NAT规则。</p>
+<?php else: ?>
+<table class="nat-table nat-table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>主机端口</th>
+            <th>容器IP:端口</th>
+            <th>协议</th>
+            <th>描述</th>
+            <th>状态</th>
+            <th>创建时间</th>
+            <th>操作</th>
+        </tr>
+    </thead>
+    <tbody>
+    <?php foreach ($rules as $rule): ?>
+        <?php $rule_id_js = htmlspecialchars($rule['id'] ?? '', ENT_QUOTES); ?>
+        <?php $enabledText = ($rule['enabled'] ?? false) ? '<span class="nat-label nat-label-success">已启用</span>' : '<span class="nat-label nat-label-danger">已禁用</span>'; ?>
+        <tr>
+            <td><?php echo htmlspecialchars($rule['id'] ?? '', ENT_QUOTES); ?></td>
+            <td><?php echo htmlspecialchars($rule['host_port'] ?? '', ENT_QUOTES); ?></td>
+            <td><?php echo htmlspecialchars($rule['container_ip_at_creation'] ?? 'N/A', ENT_QUOTES); ?>:<?php echo htmlspecialchars($rule['container_port'] ?? '', ENT_QUOTES); ?></td>
+            <td><?php echo strtoupper(htmlspecialchars($rule['protocol'] ?? 'N/A', ENT_QUOTES)); ?></td>
+            <td><?php echo htmlspecialchars($rule['description'] ?? '', ENT_QUOTES); ?></td>
+            <td><?php echo $enabledText; ?></td>
+            <td><?php echo htmlspecialchars($rule['created_at'] ?? 'N/A', ENT_QUOTES); ?></td>
+            <td>
+                <form id='deleteNatRuleForm_<?php echo $rule_id_js; ?>' style='display:inline;' onsubmit="submitPmxNatForm(event, 'deleteNatRuleForm_<?php echo $rule_id_js; ?>', 'deletenatrule');">
+                    <input type='hidden' name='rule_id' value='<?php echo $rule_id_js; ?>'>
+                    <button type='submit' class='nat-btn nat-btn-danger nat-btn-xs'>删除</button>
+                </form>
+                <div id='deleteNatRuleForm_<?php echo $rule_id_js; ?>Message' style='margin-top:5px; font-size:0.9em;'></div>
+            </td>
+        </tr>
+    <?php endforeach; ?>
+    </tbody>
+</table>
+<?php endif; ?>
