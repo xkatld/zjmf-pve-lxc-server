@@ -137,7 +137,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 cursor: '#cccccc',
             },
             rows: 24, 
-            cols: 80
+            cols: 80,
+            allowProposedApi: true
         });
 
         fitAddon = new FitAddon.FitAddon();
@@ -147,6 +148,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             fitAddon.fit(); 
         } catch (e) {
+            console.warn("FitAddon fit error on init:", e);
         }
 
         window.addEventListener('resize', () => {
@@ -155,14 +157,15 @@ document.addEventListener('DOMContentLoaded', function() {
                      fitAddon.fit();
                 }
             } catch (e) {
+                console.warn("FitAddon fit error on resize:", e);
             }
         });
         
         const wsProtocol = apiBaseUrlForWs.startsWith('https:') ? 'wss:' : 'ws:';
-        const wsHost = apiBaseUrlForWs.replace(/^https?:\/\//, '');
-        const wsUrl = `${wsProtocol}//${wsHost}/containers/${node}/${vmid}/ws-terminal?token=${encodeURIComponent(consoleSessionToken)}`;
+        const wsHostPath = apiBaseUrlForWs.replace(/^https?:\/\//, '');
+        const wsUrl = `${wsProtocol}//${wsHostPath}/containers/${node}/${vmid}/ws-terminal?token=${encodeURIComponent(consoleSessionToken)}`;
 
-        updateStatus(`正在连接到 WebSocket...`, 'connecting');
+        updateStatus(`正在连接到 WebSocket (${wsUrl})...`, 'connecting');
         socket = new WebSocket(wsUrl);
 
         socket.onopen = function() {
@@ -175,13 +178,14 @@ document.addEventListener('DOMContentLoaded', function() {
              try {
                 fitAddon.fit(); 
             } catch (e) {
+                 console.warn("FitAddon fit error on open:", e);
             }
         };
 
         socket.onerror = function(event) {
             let errorDetail = event.type || '未知错误';
             updateStatus(`WebSocket连接错误: ${errorDetail}`, 'error');
-            if(term) term.write('\r\n\x1b[31mWebSocket 连接错误。\x1b[0m\r\n');
+            if(term && term._initialized) term.write('\r\n\x1b[31mWebSocket 连接错误。\x1b[0m\r\n');
             connectButton.textContent = '连接终端';
             connectButton.disabled = false;
         };
@@ -193,7 +197,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!reason) reason = '连接已关闭。';
             
             updateStatus(`终端已断开: ${reason}`, 'disconnected');
-            if(term && term.textarea) { 
+            if(term && term._initialized && term.textarea) { 
                  term.write(`\r\n\x1b[33mWebSocket 连接已关闭 (${reason}).\x1b[0m\r\n`);
             }
             connectButton.textContent = '连接终端';
@@ -223,11 +227,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const zjmfClientAreaJwtToken = proxmoxlxcGetCookie('ZJMF_CLIENTAREA_AUTH_TOKEN');
         const requestHeaders = {};
 
+        let effectiveJwtToken = jwtTokenFromPhp;
         if (zjmfClientAreaJwtToken) {
-            requestHeaders['Authorization'] = 'Bearer ' + zjmfClientAreaJwtToken;
-        } else if (jwtTokenFromPhp) {
-             requestHeaders['Authorization'] = 'Bearer ' + jwtTokenFromPhp;
+            effectiveJwtToken = zjmfClientAreaJwtToken;
         }
+        
+        if (effectiveJwtToken) {
+             requestHeaders['Authorization'] = 'Bearer ' + effectiveJwtToken;
+        } else {
+            updateStatus('错误：无法获取认证令牌 (JWT)。请确保您已登录或刷新页面。', 'error');
+            connectButton.textContent = '连接终端';
+            connectButton.disabled = false;
+            return;
+        }
+
 
         fetch(fetchUrl, {
             method: 'POST',
@@ -257,7 +270,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => {
-            updateStatus(`获取会话令牌时出错: ${error.message}`, 'error');
+            updateStatus(`获取会话令牌时出错: ${proxmoxlxcEscapeHtml(error.message)}`, 'error');
             connectButton.textContent = '连接终端';
             connectButton.disabled = false;
         });
@@ -270,14 +283,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 disconnectTerminal();
             } else {
                  if (!apiBaseUrlForWs) {
-                    updateStatus('API基础URL未配置。', 'error');
+                    updateStatus('错误：API基础URL未配置。请联系管理员。', 'error');
                     return;
                 }
+                 if (!vmid || !node) {
+                    updateStatus('错误：VMID或节点信息缺失。', 'error');
+                    return;
+                 }
                  getConsoleSessionTokenAndConnect();
             }
         });
     } else {
-        updateStatus("无法找到连接按钮。", "error");
+        updateStatus("错误：无法找到连接按钮。", "error");
     }
 });
 </script>
