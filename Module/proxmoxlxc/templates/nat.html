@@ -1,0 +1,228 @@
+<div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+        <h6 class="m-0 font-weight-bold text-primary">NAT转发规则</h6>
+        {if ($params.configoptions_upgrade.nat_rule_limit ?? $params.configoptions.nat_rule_limit ?? 5) > 0}
+        <button type="button" class="btn btn-success btn-sm" data-toggle="modal" data-target="#createNatRuleModal">添加规则</button>
+        {/if}
+    </div>
+    <div class="card-body">
+        <p class="text-muted">最多可添加 {$params.configoptions_upgrade.nat_rule_limit ?? $params.configoptions.nat_rule_limit ?? 5} 条规则。当前 <span id="nat_current_count">0</span> 条。</p>
+        <div class="table-responsive">
+            <table class="table table-bordered" id="natRulesTable" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>主机端口</th>
+                        <th>容器IP</th>
+                        <th>容器端口</th>
+                        <th>协议</th>
+                        <th>描述</th>
+                        <th>状态</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="9" class="text-center">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="createNatRuleModal" tabindex="-1" role="dialog" aria-labelledby="createNatRuleModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createNatRuleModalLabel">创建新NAT规则</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="hostPortInput">主机端口</label>
+                    <input type="number" class="form-control" id="hostPortInput" placeholder="例如: 8080">
+                </div>
+                <div class="form-group">
+                    <label for="containerPortInput">容器端口</label>
+                    <input type="number" class="form-control" id="containerPortInput" placeholder="例如: 80">
+                </div>
+                <div class="form-group">
+                    <label for="protocolSelect">协议</label>
+                    <select class="form-control" id="protocolSelect">
+                        <option value="tcp">TCP</option>
+                        <option value="udp">UDP</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="natDescriptionInput">描述 (可选)</label>
+                    <input type="text" class="form-control" id="natDescriptionInput" placeholder="例如：我的网站服务">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="handleCreateNatRule()">创建</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    function loadNatRules() {
+        var body = {"func": "GetNatRules"};
+        var tbody = $('#natRulesTable tbody');
+        tbody.html('<tr><td colspan="9" class="text-center">加载中...</td></tr>');
+        $('#nat_current_count').text('...');
+
+        $.post("{$MODULE_CUSTOM_API}", body, function(response) { // Changed 'data' to 'response'
+            tbody.empty();
+            // PHP returns {'status':'success', 'data': {'data': [rules], 'total': count}}
+            if (response && response.status === 'success' && response.data && Array.isArray(response.data.data)) {
+                $('#nat_current_count').text(response.data.total || 0);
+                if (response.data.data.length > 0) {
+                    $.each(response.data.data, function(index, rule) {
+                        var statusBadge = rule.enabled ? '<span class="badge badge-success">已启用</span>' : '<span class="badge badge-warning">已禁用</span>'; // Assuming 'enabled' field from backend
+                        var createdAt = rule.created_at ? new Date(rule.created_at).toLocaleString() : (rule.timestamp ? new Date(rule.timestamp * 1000).toLocaleString() : '-'); // Backend might use 'created_at' or 'timestamp'
+
+                        var row = '<tr>' +
+                            '<td>' + rule.id + '</td>' +
+                            '<td>' + rule.host_port + '</td>' +
+                            '<td>' + escapeHtml(rule.container_ip_address || rule.container_ip_at_creation || 'N/A') + '</td>' + // Backend might use 'container_ip_address'
+                            '<td>' + rule.container_port + '</td>' +
+                            '<td>' + escapeHtml(rule.protocol.toUpperCase()) + '</td>' +
+                            '<td>' + escapeHtml(rule.description || '-') + '</td>' +
+                            '<td>' + statusBadge + '</td>' +
+                            '<td>' + createdAt + '</td>' +
+                            '<td>' +
+                                '<button class="btn btn-danger btn-sm" onclick="handleDeleteNatRule(' + rule.id + ')">删除</button>' +
+                            '</td>' +
+                            '</tr>';
+                        tbody.append(row);
+                    });
+                } else {
+                     tbody.html('<tr><td colspan="9" class="text-center">没有配置NAT规则。</td></tr>');
+                }
+            } else if (response && response.status === 'success' && response.data && response.data.total === 0) {
+                $('#nat_current_count').text('0');
+                tbody.html('<tr><td colspan="9" class="text-center">没有配置NAT规则。</td></tr>');
+            }
+             else {
+                $('#nat_current_count').text('N/A');
+                tbody.html('<tr><td colspan="9" class="text-center">获取NAT规则失败: ' + (response.msg || '未知错误') + '</td></tr>');
+            }
+        }).fail(function() {
+            $('#nat_current_count').text('N/A');
+            tbody.html('<tr><td colspan="9" class="text-center">请求NAT规则时发生错误。</td></tr>');
+        });
+    }
+
+    function handleCreateNatRule() {
+        var hostPort = $('#hostPortInput').val();
+        var containerPort = $('#containerPortInput').val();
+        var protocol = $('#protocolSelect').val();
+        var description = $('#natDescriptionInput').val();
+
+        if (!hostPort || !containerPort || !protocol) {
+            Swal.fire('错误', '主机端口、容器端口和协议不能为空。', 'error');
+            return;
+        }
+        $('#createNatRuleModal').modal('hide');
+        showLoading('正在创建NAT规则...');
+
+        var payload = {
+            "func": "CreateNatRule",
+            "host_port": parseInt(hostPort),
+            "container_port": parseInt(containerPort),
+            "protocol": protocol,
+            "description": description
+        };
+
+        $.post("{$MODULE_CUSTOM_API}", payload, function(response) { // Changed 'data' to 'response'
+            hideLoading();
+            if (response && response.status === 'success') { // PHP returns NatRuleOut in response.data
+                Swal.fire('成功', 'NAT规则创建成功！', 'success');
+                loadNatRules();
+                $('#hostPortInput').val('');
+                $('#containerPortInput').val('');
+                $('#natDescriptionInput').val('');
+            } else {
+                Swal.fire('失败', '创建NAT规则失败: ' + (response.msg || '未知错误'), 'error');
+            }
+        }).fail(function() {
+            hideLoading();
+            Swal.fire('失败', '创建NAT规则请求失败。', 'error');
+        });
+    }
+
+    function handleDeleteNatRule(ruleId) {
+        Swal.fire({
+            title: '确认删除?',
+            text: "确定要删除这条NAT规则吗 (ID: " + ruleId + ")？",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: '确认删除',
+            cancelButtonText: '取消'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                showLoading('正在删除NAT规则...');
+                var body = {"func": "DeleteNatRule", "rule_id": ruleId};
+                $.post("{$MODULE_CUSTOM_API}", body, function(response) { // Changed 'data' to 'response'
+                    hideLoading();
+                    // PHP DeleteNatRule returns status:success, data:null for 204
+                    if (response && response.status === 'success') {
+                        Swal.fire('成功', 'NAT规则删除成功！', 'success');
+                        loadNatRules();
+                    } else {
+                        Swal.fire('失败', '删除NAT规则失败: ' + (response.msg || '未知错误'), 'error');
+                    }
+                }).fail(function() {
+                    hideLoading();
+                    Swal.fire('失败', '删除NAT规则请求失败。', 'error');
+                });
+            }
+        });
+    }
+    
+    function escapeHtml(unsafe) {
+        if (unsafe === null || typeof unsafe === 'undefined') {
+            return '';
+        }
+        return unsafe
+             .toString()
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;")
+             .replace(/"/g, "&quot;")
+             .replace(/'/g, "&#039;");
+    }
+
+    function showLoading(title) {
+        Swal.fire({
+            title: title,
+            html: '请稍候...',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+    }
+
+    function hideLoading() {
+        Swal.close();
+    }
+
+
+    $(document).ready(function() {
+        var natRuleLimit = parseInt("{$params.configoptions_upgrade.nat_rule_limit ?? $params.configoptions.nat_rule_limit ?? 5}");
+        if (natRuleLimit > 0) {
+            loadNatRules();
+        } else {
+             $('#natRulesTable tbody').html('<tr><td colspan="9" class="text-center">NAT转发功能未启用或限制为0。</td></tr>');
+             $('#nat_current_count').text('0');
+             $('button[data-target="#createNatRuleModal"]').hide();
+        }
+    });
+</script>
