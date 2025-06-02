@@ -1,0 +1,74 @@
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">网络配置</h6>
+    </div>
+    <div class="card-body">
+        <div id="network_info_container">
+            加载中...
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    function fetchNetworkInfo() {
+        var body = {"func": "GetContainerConfig"};
+        $.post("{$MODULE_CUSTOM_API}", body, function(response) { // Changed 'data' to 'response'
+            var container = $('#network_info_container');
+            container.empty();
+            if (response && response.status === 'success' && response.data) {
+                var config = response.data; // Actual PVE config object
+                var netHtml = '<ul class="list-group">';
+                var networkInterfaceFound = false;
+                for (var key in config) {
+                    if (key.match(/^net\d+$/)) { // Match net0, net1, etc.
+                        networkInterfaceFound = true;
+                        netHtml += '<li class="list-group-item">';
+                        netHtml += '<strong>接口 ' + escapeHtml(key) + ':</strong><br>';
+                        var netDetails = config[key].split(',');
+                        var detailsFormatted = [];
+                        netDetails.forEach(function(detail) {
+                            var parts = detail.split('=');
+                            detailsFormatted.push(escapeHtml(parts[0]) + ': ' + escapeHtml(parts[1] || ''));
+                        });
+                        netHtml += detailsFormatted.join('<br>');
+                        netHtml += '</li>';
+                    }
+                }
+                if (!networkInterfaceFound) {
+                     netHtml += '<li class="list-group-item">未找到明确的网络接口配置 (netX)。</li>';
+                }
+
+                 if (config.nameserver) {
+                    netHtml += '<li class="list-group-item"><strong>DNS服务器:</strong> ' + escapeHtml(config.nameserver) + '</li>';
+                }
+                if (config.searchdomain) {
+                    netHtml += '<li class="list-group-item"><strong>搜索域:</strong> ' + escapeHtml(config.searchdomain) + '</li>';
+                }
+                netHtml += '</ul>';
+                container.html(netHtml);
+            } else {
+                container.text('获取网络信息失败: ' + (response.msg || '未知错误'));
+            }
+        }).fail(function() {
+            container.text('请求网络信息时发生错误。');
+        });
+    }
+    
+    function escapeHtml(unsafe) {
+        if (unsafe === null || typeof unsafe === 'undefined') {
+            return '';
+        }
+        return unsafe
+             .toString()
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;")
+             .replace(/"/g, "&quot;")
+             .replace(/'/g, "&#039;");
+    }
+
+
+    $(document).ready(function() {
+        fetchNetworkInfo();
+    });
+</script>
