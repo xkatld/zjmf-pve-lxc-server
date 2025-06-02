@@ -220,7 +220,7 @@ function _proxmoxlxc_get_api_details($params) {
     $api_url = rtrim($api_url, '/');
     $api_base_url = $api_url . '/api/v1';
 
-    return ['base_url' => $api_base_url, 'api_key' => $api_key, 'node' => $node];
+    return ['base_url' => $api_base_url, 'api_key' => $api_key, 'node' => $node, 'raw_api_url_for_ws' => $api_url];
 }
 
 function _proxmoxlxc_call_api($api_base_url, $api_key, $endpoint, $method = 'GET', $payload_array = null, $decode_json = true, $return_full_response = false) {
@@ -615,50 +615,6 @@ function proxmoxlxc_Reinstall($params) {
     return ['status' => 'error', 'msg' => $response['message'] ?? $response['msg'] ?? '重装系统失败'];
 }
 
-function proxmoxlxc_getterminalticket($params) {
-    header('Content-Type: application/json');
-    $api_details = _proxmoxlxc_get_api_details($params);
-    
-    $vmid_param_name = 'vmid';
-    if (isset($params['get_vars'][$vmid_param_name]) && !empty($params['get_vars'][$vmid_param_name])) {
-        $vmid = $params['get_vars'][$vmid_param_name];
-    } elseif(isset($params['post_vars'][$vmid_param_name]) && !empty($params['post_vars'][$vmid_param_name])) {
-         $vmid = $params['post_vars'][$vmid_param_name];
-    } else {
-        $vmid = $params['domain'];
-    }
-
-    if (empty($vmid)) {
-        echo json_encode(['status' => 'error', 'msg' => 'VMID不能为空']);
-        exit;
-    }
-
-    $response = _proxmoxlxc_call_api($api_details['base_url'], $api_details['api_key'], "containers/{$api_details['node']}/{$vmid}/console", 'POST');
-
-    if (isset($response['success']) && $response['success'] && isset($response['data'])) {
-        $console_data = $response['data']; 
-
-        $pve_host = $console_data['host'];
-        $pve_public_port = $params['server_port'] ?? 8006; 
-        $protocol = (!empty($params['server_secure']) && $params['server_secure'] !== 'off') ? 'wss' : 'ws';
-
-        $ticket_for_ws = $console_data['ticket'];
-        $ws_path = "/api2/json/nodes/" . rawurlencode($api_details['node']) . "/lxc/" . rawurlencode($vmid) .
-                   "/vncwebsocket?port=" . rawurlencode($console_data['port']) . "&vncticket=" . rawurlencode($ticket_for_ws);
-
-        $full_ws_url = "{$protocol}://{$pve_host}:{$pve_public_port}{$ws_path}";
-
-        echo json_encode([
-            'status' => 'success',
-            'ws_url' => $full_ws_url,
-            'ticket' => $ticket_for_ws
-        ]);
-    } else {
-        echo json_encode(['status' => 'error', 'msg' => $response['message'] ?? $response['msg'] ?? '获取终端连接信息失败']);
-    }
-    exit;
-}
-
 
 function proxmoxlxc_Status($params) {
     $api_details = _proxmoxlxc_get_api_details($params);
@@ -682,7 +638,7 @@ function proxmoxlxc_ClientArea($params) {
     return [
         'info' => ['name' => '实例信息'],
         'nat_rules' => ['name' => 'NAT规则管理'],
-        'terminal' => ['name' => '控制台'] 
+        'terminal' => ['name' => '在线终端'] 
     ];
 }
 
@@ -697,6 +653,9 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
          $system_url = rtrim(htmlspecialchars($params['systemurl'] ?? '/', ENT_QUOTES), '/');
          $module_custom_api_url = $system_url . '/clientarea.php?action=productdetails&id=' . $hostid_for_js . '&modop=custom';
     }
+    
+    $api_base_url_for_ws = rtrim($api_details['raw_api_url_for_ws'], '/') . '/api/v1';
+
 
     $template_data = [
         'vmid' => $vmid,
@@ -705,7 +664,8 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
         'js_module_custom_api_url' => $module_custom_api_url,
         'product_id' => $hostid_for_js,
         'params' => $params,
-        'Think' => ['get'=>$_GET] 
+        'Think' => ['get'=>$_GET],
+        'api_base_url_for_ws' => $api_base_url_for_ws,
     ];
 
     if (isset($_GET['jwt'])) { 
@@ -758,7 +718,6 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
     }
 
     if ($key == 'terminal') {
-        $template_data['error_message_terminal'] = null;
         return _proxmoxlxc_render_template($params, 'terminal', $template_data);
     }
 
@@ -767,7 +726,7 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
 
 function proxmoxlxc_AllowFunction() {
     return [
-        'client' => ['createnatrule', 'deletenatrule', 'pingtest', 'getterminalticket'],
+        'client' => ['createnatrule', 'deletenatrule', 'pingtest'],
         'admin' => ['createnatrule', 'deletenatrule', 'pingtest']
     ];
 }
