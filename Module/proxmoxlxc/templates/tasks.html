@@ -1,0 +1,90 @@
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">最近任务日志</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered" id="tasksTable" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>任务ID</th>
+                        <th>类型</th>
+                        <th>状态</th>
+                        <th>节点</th>
+                        <th>开始时间</th>
+                        <th>结束时间</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="6" class="text-center">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <button class="btn btn-sm btn-info mt-2" onclick="loadRecentTasks()">刷新任务列表</button>
+    </div>
+</div>
+
+<script type="text/javascript">
+    function loadRecentTasks() {
+        var body = {"func": "GetRecentTasks"};
+        var tbody = $('#tasksTable tbody');
+        tbody.html('<tr><td colspan="6" class="text-center">加载中...</td></tr>');
+
+        $.post("{$MODULE_CUSTOM_API}", body, function(response) { // Changed 'data' to 'response'
+            tbody.empty();
+            // PHP returns {'status':'success', 'data': [PVE TaskStatus objects]}
+            if (response && response.status === 'success' && Array.isArray(response.data) && response.data.length > 0) {
+                $.each(response.data, function(index, task) {
+                    var startTime = task.starttime ? new Date(task.starttime * 1000).toLocaleString() : '-';
+                    var endTime = task.endtime ? new Date(task.endtime * 1000).toLocaleString() : '-';
+                    var statusText;
+                     if (task.status === 'stopped' && task.exitstatus === 'OK') {
+                        statusText = '<span class="text-success">完成 (OK)</span>';
+                    } else if (task.status === 'stopped') { // Implies error if not OK
+                        statusText = '<span class="text-danger">失败 ('+ escapeHtml(task.exitstatus || 'Unknown Error') +')</span>';
+                    } else if (task.status === 'running') {
+                        statusText = '<span class="text-info">运行中</span>';
+                    } else {
+                        statusText = escapeHtml(task.status) + (task.exitstatus ? ' (' + escapeHtml(task.exitstatus) + ')' : '');
+                    }
+
+
+                    var row = '<tr>' +
+                        '<td>' + escapeHtml(task.upid || task.id) + '</td>' +
+                        '<td>' + escapeHtml(task.type) + '</td>' +
+                        '<td>' + statusText + '</td>' +
+                        '<td>' + escapeHtml(task.node || 'N/A') + '</td>' +
+                        '<td>' + startTime + '</td>' +
+                        '<td>' + endTime + '</td>' +
+                        '</tr>';
+                    tbody.append(row);
+                });
+            } else if (response && response.status === 'success' && (!response.data || !Array.isArray(response.data) || response.data.length === 0)) {
+                 tbody.html('<tr><td colspan="6" class="text-center">没有最近的任务记录。</td></tr>');
+            }
+             else {
+                tbody.html('<tr><td colspan="6" class="text-center">获取任务列表失败: ' + (response.msg || '未知错误') + '</td></tr>');
+            }
+        }).fail(function() {
+            tbody.html('<tr><td colspan="6" class="text-center">请求任务列表时发生错误。</td></tr>');
+        });
+    }
+    
+    function escapeHtml(unsafe) {
+        if (unsafe === null || typeof unsafe === 'undefined') {
+            return '';
+        }
+        return unsafe
+             .toString()
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;")
+             .replace(/"/g, "&quot;")
+             .replace(/'/g, "&#039;");
+    }
+
+
+    $(document).ready(function() {
+        loadRecentTasks();
+    });
+</script>
