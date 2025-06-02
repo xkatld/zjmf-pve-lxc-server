@@ -78,7 +78,7 @@ class ProxmoxService:
             logger.error(f"获取容器列表失败: {str(e)}")
             raise Exception(f"获取容器列表失败: {str(e)}")
 
-    def get_container_status(self, node: str, vmid: str) -> Dict[str, Any]:
+    def get_container_status(self, node: str, vmid: str) -> Dict[str, Any]]:
         try:
             status = self._call_proxmox_api(self.proxmox.nodes(node).lxc(vmid).status.current.get)
             config = self._call_proxmox_api(self.proxmox.nodes(node).lxc(vmid).config.get)
@@ -131,15 +131,14 @@ class ProxmoxService:
                                                         return str(ipaddress.ip_address(ip_info["ip-address"]))
                                 except Exception as agent_e:
                                     logger.warning(f"通过 agent 获取容器 {vmid} IP 地址失败: {agent_e}")
-                                return None # DHCP, but couldn't get from agent
-                            else: # Static IP
+                                return None
+                            else: 
                                 ip_with_cidr = ip_config.split('/')[0]
                                 return str(ipaddress.ip_address(ip_with_cidr))
             return None
         except Exception as e:
             logger.error(f"获取容器 {vmid} ({node}) IP 地址失败: {str(e)}")
             return None
-
 
     def start_container(self, node: str, vmid: str) -> Dict[str, Any]:
         try:
@@ -240,13 +239,12 @@ class ProxmoxService:
 
             if feature_list:
                 params['features'] = ",".join(feature_list)
-
+            
             params['console'] = 1
             if data.console_mode == ConsoleMode.SHELL:
                 params['tty'] = 1
             else:
                 params['tty'] = 2
-
 
             result = self._call_proxmox_api(self.proxmox.nodes(node).lxc.post, **params)
 
@@ -311,7 +309,6 @@ class ProxmoxService:
             except Exception:
                  logger.info(f"容器 {vmid} 可能不存在或无法获取状态，继续执行删除。")
 
-
             logger.info(f"正在删除容器 {vmid}...")
             delete_result = self.delete_container(node, vmid)
             if not delete_result['success']:
@@ -325,7 +322,6 @@ class ProxmoxService:
                 if not self._wait_for_task(node, delete_result['task_id']):
                     return {'success': False, 'message': f"重建失败: 删除容器任务失败或超时"}
                 logger.info(f"容器 {vmid} 已删除。")
-
 
             logger.info(f"正在使用新配置创建容器 {vmid}...")
             create_data = ContainerCreate(
@@ -368,6 +364,22 @@ class ProxmoxService:
             return {
                 'success': False,
                 'message': f'重建容器失败: {str(e)}'
+            }
+
+    def change_container_password(self, node: str, vmid: str, new_password: str) -> Dict[str, Any]:
+        try:
+            params = {'password': new_password}
+            task_id = self._call_proxmox_api(self.proxmox.nodes(node).lxc(vmid).config.post, **params)
+            return {
+                'success': True,
+                'message': f'容器 {vmid} 密码修改任务已启动',
+                'task_id': task_id
+            }
+        except Exception as e:
+            logger.error(f"修改容器 {vmid} 密码失败: {str(e)}")
+            return {
+                'success': False,
+                'message': f'修改容器密码失败: {str(e)}'
             }
 
     def get_container_console(self, node: str, vmid: str) -> Dict[str, Any]:
@@ -437,6 +449,5 @@ class ProxmoxService:
         except Exception as e:
             logger.error(f"获取节点 {node} 网络失败: {str(e)}")
             raise Exception(f"获取节点网络失败: {str(e)}")
-
 
 proxmox_service = ProxmoxService()
