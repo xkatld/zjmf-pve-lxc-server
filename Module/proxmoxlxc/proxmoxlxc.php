@@ -315,18 +315,14 @@ function _proxmoxlxc_render_template($params, $template_name, $data = []) {
     } elseif (isset($params['MODULE_PATH']) && !empty($params['MODULE_PATH'])) {
         $module_base_path = rtrim($params['MODULE_PATH'], DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
     } else {
-        error_log("ProxmoxLXC: 在 \$params 中未找到 'modulepath' 或 'MODULE_PATH'。尝试使用 __DIR__。");
         $module_base_path = __DIR__ . DIRECTORY_SEPARATOR;
     }
 
     if (empty($module_base_path)) {
-         error_log("ProxmoxLXC: 致命错误 - 无法确定模块基础路径。");
          return "致命错误：无法确定模块的基础路径。";
     }
 
     $template_file = $module_base_path . 'templates' . DIRECTORY_SEPARATOR . $template_name . '.html';
-
-    // error_log("ProxmoxLXC: 最终尝试加载模板的绝对路径: " . $template_file); // 可以注释掉这行，如果已确认路径正确
 
     if (file_exists($template_file)) {
         extract($data);
@@ -335,7 +331,6 @@ function _proxmoxlxc_render_template($params, $template_name, $data = []) {
         return ob_get_clean();
     }
     
-    error_log("ProxmoxLXC: 模板文件未找到: " . $template_file);
     return "模板文件未找到 (尝试路径): " . htmlspecialchars($template_file);
 }
 
@@ -563,7 +558,7 @@ function proxmoxlxc_Reinstall($params) {
     if (isset($params['configoptions']['default_ostemplate']) && !empty($params['configoptions']['default_ostemplate'])) {
         $new_ostemplate = $params['configoptions']['default_ostemplate'];
     } elseif (isset($params['reinstall_os_name']) && !empty($params['reinstall_os_name'])) {
-        // $new_ostemplate = $params['reinstall_os_name']; 
+        
     }
 
     if (empty($new_ostemplate)) {
@@ -620,33 +615,50 @@ function proxmoxlxc_Reinstall($params) {
     return ['status' => 'error', 'msg' => $response['message'] ?? $response['msg'] ?? '重装系统失败'];
 }
 
-function proxmoxlxc_Vnc($params) {
+function proxmoxlxc_getterminalticket($params) {
+    header('Content-Type: application/json');
     $api_details = _proxmoxlxc_get_api_details($params);
-    $vmid = $params['domain'];
+    
+    $vmid_param_name = 'vmid';
+    if (isset($params['get_vars'][$vmid_param_name]) && !empty($params['get_vars'][$vmid_param_name])) {
+        $vmid = $params['get_vars'][$vmid_param_name];
+    } elseif(isset($params['post_vars'][$vmid_param_name]) && !empty($params['post_vars'][$vmid_param_name])) {
+         $vmid = $params['post_vars'][$vmid_param_name];
+    } else {
+        $vmid = $params['domain'];
+    }
+
+    if (empty($vmid)) {
+        echo json_encode(['status' => 'error', 'msg' => 'VMID不能为空']);
+        exit;
+    }
+
     $response = _proxmoxlxc_call_api($api_details['base_url'], $api_details['api_key'], "containers/{$api_details['node']}/{$vmid}/console", 'POST');
 
     if (isset($response['success']) && $response['success'] && isset($response['data'])) {
-        $console_data = $response['data'];
-        
+        $console_data = $response['data']; 
+
         $pve_host = $console_data['host'];
         $pve_public_port = $params['server_port'] ?? 8006; 
-        $protocol = (!empty($params['server_secure']) && $params['server_secure'] !== 'off') ? 'https' : 'http';
+        $protocol = (!empty($params['server_secure']) && $params['server_secure'] !== 'off') ? 'wss' : 'ws';
 
-        $encoded_ticket_for_ws_param = rawurlencode($console_data['ticket']);
+        $ticket_for_ws = $console_data['ticket'];
+        $ws_path = "/api2/json/nodes/" . rawurlencode($api_details['node']) . "/lxc/" . rawurlencode($vmid) .
+                   "/vncwebsocket?port=" . rawurlencode($console_data['port']) . "&vncticket=" . rawurlencode($ticket_for_ws);
 
-        $path_node = rawurlencode($api_details['node']);
-        $path_vmid = rawurlencode($vmid);
-        $ws_target_path_and_query = "api2/json/nodes/{$path_node}/lxc/{$path_vmid}/vncwebsocket?port={$console_data['port']}&vncticket={$encoded_ticket_for_ws_param}";
-        $main_url_path_parameter_value = rawurlencode($ws_target_path_and_query);
-        $main_url_vmid = rawurlencode($vmid);
-        $main_url_node = rawurlencode($api_details['node']);
-        
-        $vnc_url = "{$protocol}://{$pve_host}:{$pve_public_port}/?console=lxc&novnc=1&vmid={$main_url_vmid}&node={$main_url_node}&resize=scale&path={$main_url_path_parameter_value}";
-        
-        return ['status' => 'success', 'url' => $vnc_url];
+        $full_ws_url = "{$protocol}://{$pve_host}:{$pve_public_port}{$ws_path}";
+
+        echo json_encode([
+            'status' => 'success',
+            'ws_url' => $full_ws_url,
+            'ticket' => $ticket_for_ws
+        ]);
+    } else {
+        echo json_encode(['status' => 'error', 'msg' => $response['message'] ?? $response['msg'] ?? '获取终端连接信息失败']);
     }
-    return ['status' => 'error', 'msg' => $response['message'] ?? $response['msg'] ?? '获取VNC控制台失败'];
+    exit;
 }
+
 
 function proxmoxlxc_Status($params) {
     $api_details = _proxmoxlxc_get_api_details($params);
@@ -691,6 +703,7 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
         'node' => $node,
         'api_details' => $api_details,
         'js_module_custom_api_url' => $module_custom_api_url,
+        'product_id' => $hostid_for_js,
         'params' => $params,
         'Think' => ['get'=>$_GET] 
     ];
@@ -745,14 +758,7 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
     }
 
     if ($key == 'terminal') {
-        $vnc_details = proxmoxlxc_Vnc($params); // Re-use the existing VNC function
-        if ($vnc_details['status'] == 'success' && isset($vnc_details['url'])) {
-            $template_data['vnc_url'] = $vnc_details['url'];
-            $template_data['error_message_terminal'] = null;
-        } else {
-            $template_data['vnc_url'] = null;
-            $template_data['error_message_terminal'] = $vnc_details['msg'] ?? '无法获取控制台连接信息。';
-        }
+        $template_data['error_message_terminal'] = null;
         return _proxmoxlxc_render_template($params, 'terminal', $template_data);
     }
 
@@ -761,7 +767,7 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
 
 function proxmoxlxc_AllowFunction() {
     return [
-        'client' => ['createnatrule', 'deletenatrule', 'pingtest'],
+        'client' => ['createnatrule', 'deletenatrule', 'pingtest', 'getterminalticket'],
         'admin' => ['createnatrule', 'deletenatrule', 'pingtest']
     ];
 }
