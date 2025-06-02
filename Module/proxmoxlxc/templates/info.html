@@ -1,12 +1,110 @@
-<h3>实例概览</h3>
-<?php if ($status_info): ?>
-    <p><strong>VMID:</strong> <?php echo htmlspecialchars($status_info['vmid'] ?? '', ENT_QUOTES); ?></p>
-    <p><strong>节点:</strong> <?php echo htmlspecialchars($status_info['node'] ?? '', ENT_QUOTES); ?></p>
-    <p><strong>状态:</strong> <?php echo htmlspecialchars($status_info['status'] ?? '', ENT_QUOTES); ?></p>
-    <p><strong>名称:</strong> <?php echo htmlspecialchars($status_info['name'] ?? '', ENT_QUOTES); ?></p>
-    <p><strong>CPU使用率:</strong> <?php echo round(($status_info['cpu'] ?? 0) * 100, 2); ?>%</p>
-    <p><strong>内存使用:</strong> <?php echo round(($status_info['mem'] ?? 0) / (1024*1024), 2); ?> MB / <?php echo round(($status_info['maxmem'] ?? 0) / (1024*1024), 2); ?> MB</p>
-    <p><strong>运行时间:</strong> <?php echo htmlspecialchars($status_info['uptime_formatted'] ?? 'N/A', ENT_QUOTES); ?></p>
-<?php else: ?>
-    <div class='alert alert-danger'>获取实例信息失败: <?php echo $error_message_info; ?></div>
-<?php endif; ?>
+<style>
+    .proxmoxlxc-info-container {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+        background-color: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        max-width: 800px;
+        margin: 20px auto;
+    }
+    .proxmoxlxc-info-header {
+        font-size: 1.5em;
+        color: #333;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #e0e0e0;
+        padding-bottom: 10px;
+    }
+    .proxmoxlxc-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 15px;
+    }
+    .proxmoxlxc-info-item {
+        background-color: #fff;
+        padding: 15px;
+        border-radius: 6px;
+        border: 1px solid #e9ecef;
+    }
+    .proxmoxlxc-info-item strong {
+        display: block;
+        color: #555;
+        margin-bottom: 5px;
+        font-size: 0.9em;
+    }
+    .proxmoxlxc-info-item span {
+        font-size: 1.1em;
+        color: #28a745;
+    }
+    .proxmoxlxc-info-item .status-stopped {
+        color: #dc3545;
+    }
+    .proxmoxlxc-info-item .status-unknown {
+        color: #ffc107;
+    }
+    .proxmoxlxc-info-error {
+        color: #721c24;
+        background-color: #f8d7da;
+        border-color: #f5c6cb;
+        padding: 10px;
+        border-radius: 4px;
+    }
+    @media (max-width: 600px) {
+        .proxmoxlxc-info-grid {
+            grid-template-columns: 1fr;
+        }
+        .proxmoxlxc-info-header {
+            font-size: 1.3em;
+        }
+    }
+</style>
+
+<div class="proxmoxlxc-info-container">
+    <h3 class="proxmoxlxc-info-header">实例概览</h3>
+    <?php if ($status_info): ?>
+        <div class="proxmoxlxc-info-grid">
+            <div class="proxmoxlxc-info-item">
+                <strong>VMID</strong>
+                <span><?php echo htmlspecialchars($status_info['vmid'] ?? 'N/A', ENT_QUOTES); ?></span>
+            </div>
+            <div class="proxmoxlxc-info-item">
+                <strong>节点</strong>
+                <span><?php echo htmlspecialchars($status_info['node'] ?? 'N/A', ENT_QUOTES); ?></span>
+            </div>
+            <div class="proxmoxlxc-info-item">
+                <strong>状态</strong>
+                <?php
+                    $status_val = strtolower($status_info['status'] ?? 'unknown');
+                    $status_class = 'status-unknown';
+                    if ($status_val === 'running') {
+                        $status_class = '';
+                    } elseif ($status_val === 'stopped') {
+                        $status_class = 'status-stopped';
+                    }
+                ?>
+                <span class="<?php echo $status_class; ?>"><?php echo htmlspecialchars($status_info['status'] ?? '未知', ENT_QUOTES); ?></span>
+            </div>
+            <div class="proxmoxlxc-info-item">
+                <strong>名称</strong>
+                <span><?php echo htmlspecialchars($status_info['name'] ?? 'N/A', ENT_QUOTES); ?></span>
+            </div>
+            <div class="proxmoxlxc-info-item">
+                <strong>CPU使用率</strong>
+                <span><?php echo round(($status_info['cpu'] ?? 0) * 100, 2); ?>%</span>
+            </div>
+            <div class="proxmoxlxc-info-item">
+                <strong>内存使用</strong>
+                <span>
+                    <?php echo round(($status_info['mem'] ?? 0) / (1024*1024), 2); ?> MB /
+                    <?php echo round(($status_info['maxmem'] ?? 0) / (1024*1024), 2); ?> MB
+                </span>
+            </div>
+            <div class="proxmoxlxc-info-item">
+                <strong>运行时间</strong>
+                <span><?php echo htmlspecialchars($status_info['uptime_formatted'] ?? 'N/A', ENT_QUOTES); ?></span>
+            </div>
+        </div>
+    <?php else: ?>
+        <div class="proxmoxlxc-info-error">获取实例信息失败: <?php echo $error_message_info; ?></div>
+    <?php endif; ?>
+</div>
