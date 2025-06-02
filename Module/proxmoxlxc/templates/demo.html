@@ -35,62 +35,23 @@
     </div>
     <h1>服务器正在构建中 请耐心等待</h1>
 </div>
+
 <style type="text/css" media="all">
     @-webkit-keyframes clockwise {
-        0% {
-            -moz-transform: rotate(0deg);
-            -ms-transform: rotate(0deg);
-            -webkit-transform: rotate(0deg);
-            transform: rotate(0deg);
-        }
-        100% {
-            -moz-transform: rotate(360deg);
-            -ms-transform: rotate(360deg);
-            -webkit-transform: rotate(360deg);
-            transform: rotate(360deg);
-        }
+        0% { -webkit-transform: rotate(0deg); transform: rotate(0deg); }
+        100% { -webkit-transform: rotate(360deg); transform: rotate(360deg); }
     }
     @-moz-keyframes clockwise {
-        0% {
-            -moz-transform: rotate(0deg);
-            -ms-transform: rotate(0deg);
-            -webkit-transform: rotate(0deg);
-            transform: rotate(0deg);
-        }
-        100% {
-            -moz-transform: rotate(360deg);
-            -ms-transform: rotate(360deg);
-            -webkit-transform: rotate(360deg);
-            transform: rotate(360deg);
-        }
+        0% { -moz-transform: rotate(0deg); transform: rotate(0deg); }
+        100% { -moz-transform: rotate(360deg); transform: rotate(360deg); }
     }
     @-webkit-keyframes counter-clockwise {
-        0% {
-            -moz-transform: rotate(0deg);
-            -ms-transform: rotate(0deg);
-            -webkit-transform: rotate(0deg);
-            transform: rotate(0deg);
-        }
-        100% {
-            -moz-transform: rotate(-360deg);
-            -ms-transform: rotate(-360deg);
-            -webkit-transform: rotate(-360deg);
-            transform: rotate(-360deg);
-        }
+        0% { -webkit-transform: rotate(0deg); transform: rotate(0deg); }
+        100% { -webkit-transform: rotate(-360deg); transform: rotate(-360deg); }
     }
     @-moz-keyframes counter-clockwise {
-        0% {
-            -moz-transform: rotate(0deg);
-            -ms-transform: rotate(0deg);
-            -webkit-transform: rotate(0deg);
-            transform: rotate(0deg);
-        }
-        100% {
-            -moz-transform: rotate(-360deg);
-            -ms-transform: rotate(-360deg);
-            -webkit-transform: rotate(-360deg);
-            transform: rotate(-360deg);
-        }
+        0% { -moz-transform: rotate(0deg); transform: rotate(0deg); }
+        100% { -moz-transform: rotate(-360deg); transform: rotate(-360deg); }
     }
     .container {
         position: absolute;
@@ -101,6 +62,7 @@
         width: 200px;
         margin-top: -75px;
     }
+
     .gearbox {
         background: #111;
         height: 150px;
@@ -137,6 +99,7 @@
     .gearbox.turn .overlay {
         background: transparent;
     }
+
     .gear {
         position: absolute;
         height: 60px;
@@ -198,6 +161,7 @@
         -webkit-box-shadow: 0px 0px 10px rgba(255, 255, 255, 0.1), inset 0px 0px 10px rgba(0, 0, 0, 0.1), inset 0px 2px 0px 0px #090909, inset 0px -1px 0px 0px #888888;
         box-shadow: 0px 0px 10px rgba(255, 255, 255, 0.1), inset 0px 0px 10px rgba(0, 0, 0, 0.1), inset 0px 2px 0px 0px #090909, inset 0px -1px 0px 0px #888888;
     }
+
     .gear-inner {
         position: relative;
         height: 100%;
@@ -280,6 +244,7 @@
         -webkit-transform: rotate(150deg);
         transform: rotate(150deg);
     }
+
     h1 {
         font-family: "Helvetica";
         text-align: center;
