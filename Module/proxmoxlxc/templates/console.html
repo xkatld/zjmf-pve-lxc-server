@@ -8,10 +8,10 @@
     </div>
 </div>
 
-<link rel="stylesheet" href="{$MODULE_PATH}/templates/xterm/xterm.min.css" />
-<script src="{$MODULE_PATH}/templates/xterm/xterm.min.js"></script>
-<script src="{$MODULE_PATH}/templates/xterm/xterm-addon-fit.min.js"></script>
-<script src="{$MODULE_PATH}/templates/xterm/xterm-addon-attach.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.5.0/css/xterm.css" />
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.5.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.9.0/lib/xterm-addon-fit.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-attach@0.9.0/lib/xterm-addon-attach.min.js"></script>
 
 <script type="text/javascript">
     var term, ws, fitAddon;
@@ -23,9 +23,9 @@
     function requestConsoleTokenAndConnect() {
         showLoading('正在请求控制台访问...');
         var body = {"func": "RequestConsoleToken"};
-        $.post("{$MODULE_CUSTOM_API}", body, function(response) { // Changed 'data' to 'response'
+        $.post("{$MODULE_CUSTOM_API}", body, function(response) { 
             hideLoading();
-            // PHP returns {'status':'success', 'data': {'token': 'TOKEN_VALUE'}}
+            
             if (response && response.status === 'success' && response.data && response.data.token) {
                 connectWebSocket(response.data.token);
             } else {
@@ -52,21 +52,21 @@
 
         term = new Terminal({
             cursorBlink: true,
-            rows: 24, // Default, fitAddon will adjust
-            cols: 80,  // Default
+            rows: 24, 
+            cols: 80,  
             theme: {
                 background: '#000000',
                 foreground: '#ffffff',
                 cursor: 'rgba(255,255,255,0.5)'
             },
-            convertEol: true // Important for proper line endings
+            convertEol: true 
         });
         fitAddon = new FitAddon.FitAddon();
         term.loadAddon(fitAddon);
         term.open(document.getElementById('terminal'));
         
         try {
-            fitAddon.fit(); // Initial fit
+            fitAddon.fit(); 
         } catch (e) {
             console.error("Fit addon error on initial fit:", e);
         }
@@ -76,12 +76,12 @@
         ws = new WebSocket(finalWsUrl);
 
         var attachAddon = new AttachAddon.AttachAddon(ws);
-        term.loadAddon(attachAddon); // This handles data transfer
+        term.loadAddon(attachAddon); 
 
         ws.onopen = function() {
             console.log("WebSocket连接已打开");
              try {
-                fitAddon.fit(); // Fit again once connected and terminal is fully visible
+                fitAddon.fit(); 
             } catch (e) {
                 console.error("Fit addon error on open:", e);
             }
@@ -103,9 +103,9 @@
              $('#connectConsoleBtn').text('连接错误,重试').show();
         };
         
-        // Ensure terminal resizes correctly
+        
         $(window).off('resize.consolexterm').on('resize.consolexterm', function() {
-            if (fitAddon && term && term.element) { // Check if terminal is still alive
+            if (fitAddon && term && term.element) { 
                  try {
                     fitAddon.fit();
                 } catch (e) {
@@ -113,7 +113,7 @@
                 }
             }
         });
-         // Also listen to tab visibility change as it might affect dimensions
+         
         $(document).off('visibilitychange.consolexterm').on('visibilitychange.consolexterm', function() {
             if (document.visibilityState === 'visible' && fitAddon && term && term.element) {
                  try {
@@ -158,7 +158,7 @@
         Swal.close();
     }
 
-    // Cleanup WebSocket on page unload or before navigating away if in SPA context
+    
     $(window).on('beforeunload', function() {
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.close();
@@ -168,12 +168,11 @@
         }
     });
     
-    // When the tab holding this page becomes active, try to fit the terminal
-    // This handles cases where the tab was opened in the background or restored
+    
     document.addEventListener('DOMContentLoaded', function() {
-        if (typeof TabHelper !== 'undefined') { // Assuming TabHelper is a global object from your theme/framework
-            TabHelper.onShow(function(tabId) { // Replace with actual event from your TabHelper
-                if (tabId === getCurrentTabId() && fitAddon && term && term.element) { // Replace getCurrentTabId()
+        if (typeof TabHelper !== 'undefined') { 
+            TabHelper.onShow(function(tabId) { 
+                if (tabId === getCurrentTabId() && fitAddon && term && term.element) { 
                      try {
                          fitAddon.fit();
                      } catch (e) {
