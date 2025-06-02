@@ -13,9 +13,14 @@ class ContainerStatus(BaseModel):
     status: str
     uptime: Optional[int] = None
     cpu: Optional[float] = None
+    cpus: Optional[int] = None 
     mem: Optional[int] = None
     maxmem: Optional[int] = None
+    disk: Optional[int] = None 
+    maxdisk: Optional[int] = None 
     node: str
+    template: Optional[bool] = None
+
 
 class ContainerOperation(BaseModel):
     vmid: str
