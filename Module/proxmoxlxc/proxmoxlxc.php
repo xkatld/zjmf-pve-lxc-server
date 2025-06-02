@@ -795,3 +795,5 @@ function proxmoxlxc_deletenatrule($params) {
     }
     exit;
 }
+
+?>
