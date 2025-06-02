@@ -59,13 +59,14 @@
 
 <div class="proxmoxlxc-terminal-controls">
     <button id="proxmoxlxc_connect_btn" class="proxmoxlxc-terminal-btn">连接终端</button>
+    <input type="hidden" id="proxmoxlxc_vmid" value="<?php echo htmlspecialchars($vmid ?? '', ENT_QUOTES); ?>">
+    <input type="hidden" id="proxmoxlxc_node" value="<?php echo htmlspecialchars($node ?? '', ENT_QUOTES); ?>">
+    <input type="hidden" id="proxmoxlxc_jwt_token" value="<?php echo htmlspecialchars($jwt_token ?? '', ENT_QUOTES); ?>">
+    <input type="hidden" id="proxmoxlxc_api_base_url_for_ws" value="<?php echo htmlspecialchars($api_base_url_for_ws ?? '', ENT_QUOTES); ?>">
+
 </div>
 <div id="proxmoxlxc_terminal_status_area">
-    <?php if (!empty($error_message_terminal)): ?>
-        <div class="proxmoxlxc-terminal-status proxmoxlxc-terminal-status-error"><?php echo htmlspecialchars($error_message_terminal); ?></div>
-    <?php else: ?>
-        <div class="proxmoxlxc-terminal-status proxmoxlxc-terminal-status-default">点击“连接终端”按钮以启动。</div>
-    <?php endif; ?>
+    <div class="proxmoxlxc-terminal-status proxmoxlxc-terminal-status-default">点击“连接终端”按钮以启动。</div>
 </div>
 <div class="proxmoxlxc-terminal-container">
     <div id="proxmoxlxc_terminal"></div>
@@ -80,11 +81,10 @@ document.addEventListener('DOMContentLoaded', function() {
     let socket;
     let fitAddon;
 
-    const productId = '<?php echo $product_id; ?>';
-    const customApiUrl = '<?php echo $js_module_custom_api_url; ?>';
-    const vmid = '<?php echo $vmid; ?>';
-    const node = '<?php echo $node; ?>';
-    const jwtTokenFromPhp = '<?php echo $jwt_token; ?>';
+    const vmid = document.getElementById('proxmoxlxc_vmid').value;
+    const node = document.getElementById('proxmoxlxc_node').value;
+    const jwtTokenFromPhp = document.getElementById('proxmoxlxc_jwt_token').value;
+    const apiBaseUrlForWs = document.getElementById('proxmoxlxc_api_base_url_for_ws').value;
 
 
     function updateStatus(message, type = 'default') {
@@ -114,7 +114,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return null;
     }
 
-    function initTerminal(wsUrl, ticket) {
+    function initTerminal(consoleSessionToken) {
         if (!terminalContainer) {
             updateStatus('终端容器DIV元素未找到。', 'error');
             connectButton.disabled = false;
@@ -158,17 +158,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        updateStatus(`正在连接到 WebSocket: ${wsUrl.split('?')[0]}...`, 'connecting');
+        const wsProtocol = apiBaseUrlForWs.startsWith('https:') ? 'wss:' : 'ws:';
+        const wsHost = apiBaseUrlForWs.replace(/^https?:\/\//, '');
+        const wsUrl = `${wsProtocol}//${wsHost}/containers/${node}/${vmid}/ws-terminal?token=${encodeURIComponent(consoleSessionToken)}`;
+
+        updateStatus(`正在连接到 WebSocket...`, 'connecting');
         socket = new WebSocket(wsUrl);
 
         socket.onopen = function() {
-            updateStatus('WebSocket 连接成功，正在发送票据...', 'connecting');
-            
-            socket.send(ticket); 
-
             const attachAddon = new AttachAddon.AttachAddon(socket);
             term.loadAddon(attachAddon); 
-
             updateStatus('终端已连接。', 'connected');
             connectButton.textContent = '断开连接';
             connectButton.disabled = false;
@@ -181,11 +180,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         socket.onerror = function(event) {
             let errorDetail = event.type || '未知错误';
-            try {
-                const eventStr = JSON.stringify(event);
-                if(eventStr.length > 2) errorDetail = eventStr.substring(0, 100);
-            } catch(e) {}
-
             updateStatus(`WebSocket连接错误: ${errorDetail}`, 'error');
             if(term) term.write('\r\n\x1b[31mWebSocket 连接错误。\x1b[0m\r\n');
             connectButton.textContent = '连接终端';
@@ -220,33 +214,31 @@ document.addEventListener('DOMContentLoaded', function() {
         connectButton.disabled = false;
     }
 
-    function startConnectionProcess() {
+    function getConsoleSessionTokenAndConnect() {
         connectButton.disabled = true;
         connectButton.textContent = '连接中...';
-        updateStatus('正在获取连接信息...', 'connecting');
+        updateStatus('正在获取终端会话令牌...', 'connecting');
 
-        const fetchUrl = `${customApiUrl}&func=getterminalticket&product_id=${productId}&vmid=${encodeURIComponent(vmid)}&node=${encodeURIComponent(node)}&jwt=${encodeURIComponent(jwtTokenFromPhp)}`;
-        
-        const zjmfClientAreaJwtToken = proxmoxlxcGetCookie('ZJMF_CLIENTAREA_AUTH_TOKEN'); 
+        const fetchUrl = `${apiBaseUrlForWs}/containers/${node}/${vmid}/request-console-token`;
+        const zjmfClientAreaJwtToken = proxmoxlxcGetCookie('ZJMF_CLIENTAREA_AUTH_TOKEN');
         const requestHeaders = {};
 
         if (zjmfClientAreaJwtToken) {
             requestHeaders['Authorization'] = 'Bearer ' + zjmfClientAreaJwtToken;
         } else if (jwtTokenFromPhp) {
-            requestHeaders['Authorization'] = 'Bearer ' + jwtTokenFromPhp;
+             requestHeaders['Authorization'] = 'Bearer ' + jwtTokenFromPhp;
         }
 
-
         fetch(fetchUrl, {
-            method: 'GET', 
+            method: 'POST',
             headers: requestHeaders
         })
         .then(response => {
             if (!response.ok) {
-                return response.text().then(text => { 
+                 return response.text().then(text => { 
                     try {
                         const errorJson = JSON.parse(text);
-                        throw new Error(errorJson.msg || errorJson.message || `HTTP ${response.status}: 获取票据失败`);
+                        throw new Error(errorJson.message || errorJson.detail || `HTTP ${response.status}: 获取令牌失败`);
                     } catch(e){
                          throw new Error(`HTTP ${response.status}: ${text.substring(0,100)}`);
                     }
@@ -255,28 +247,33 @@ document.addEventListener('DOMContentLoaded', function() {
             return response.json();
         })
         .then(data => {
-            if (data.status === 'success' && data.ws_url && data.ticket) {
-                initTerminal(data.ws_url, data.ticket);
+            if (data.success && data.data && data.data.token) {
+                initTerminal(data.data.token);
             } else {
-                const errorMsg = data.msg || '从服务器获取终端信息失败。';
+                const errorMsg = data.message || '从服务器获取终端会话令牌失败。';
                 updateStatus(errorMsg, 'error');
                 connectButton.textContent = '连接终端';
                 connectButton.disabled = false;
             }
         })
         .catch(error => {
-            updateStatus(`初始化终端时出错: ${error.message}`, 'error');
+            updateStatus(`获取会话令牌时出错: ${error.message}`, 'error');
             connectButton.textContent = '连接终端';
             connectButton.disabled = false;
         });
     }
+
 
     if (connectButton) {
         connectButton.addEventListener('click', function() {
             if (this.textContent === '断开连接') {
                 disconnectTerminal();
             } else {
-                startConnectionProcess();
+                 if (!apiBaseUrlForWs) {
+                    updateStatus('API基础URL未配置。', 'error');
+                    return;
+                }
+                 getConsoleSessionTokenAndConnect();
             }
         });
     } else {
