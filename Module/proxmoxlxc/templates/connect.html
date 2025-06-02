@@ -26,6 +26,7 @@
         具体连接方法可以参考 <a href="" target="_blank">SSH客户端软件连接Linux服务器教程</a>
     </div>
 </div>
+
 {if $vnc}
 <div class="card shadow mb-4">
     <div class="card-header py-3">
@@ -39,6 +40,7 @@
     </div>
 </div>
 {/if}
+
 <script type="text/javascript" charset="utf-8">
     function connect_vnc(){
         var body = {"func":"Vnc"}
@@ -50,17 +52,19 @@
             window.open (data.url, "控制台VNC", "height=500, width=700, top=50%, left=50%, toolbar=no, menubar=no, scrollbars=no, resizable=no,location=no, status=yes");
         })
     }
+        
     function ajax(options){
         var xhr = new XMLHttpRequest() || new ActiveXObject("Microsoft,XMLHTTP");
+        var str = "";
         if(typeof(options.data)!='string'){
-            var str = "";
             for(var key in options.data){
                 str+="&"+key+"="+options.data[key];
             }
             str = str.slice(1)
         }else{
-            var str = options.data;
+            str = options.data;
         }
+        
         options.dataType=options.dataType||'json';
         if(options.type == "get"){
             var url = options.url+"?"+str;
