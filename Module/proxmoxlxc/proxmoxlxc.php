@@ -308,15 +308,41 @@ function _proxmoxlxc_call_api($api_base_url, $api_key, $endpoint, $method = 'GET
 }
 
 function _proxmoxlxc_render_template($params, $template_name, $data = []) {
-    $template_file = $params['modulepath'] . 'templates/' . $template_name . '.html';
+    $module_base_path = '';
+
+    if (isset($params['modulepath']) && !empty($params['modulepath'])) {
+        $module_base_path = rtrim($params['modulepath'], DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+    } elseif (isset($params['MODULE_PATH']) && !empty($params['MODULE_PATH'])) {
+        $module_base_path = rtrim($params['MODULE_PATH'], DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        // If MODULE_PATH points to 'modules/servers/', we might need to append the module name.
+        // However, based on ZJMF docs for 'modulepath', it should already point to the specific module directory.
+        // Let's assume $params['MODULE_PATH'] also points to the specific module dir if 'modulepath' is absent.
+        // If it was '.../servers/' then $module_base_path .= ($params['module_type'] ?? 'proxmoxlxc') . DIRECTORY_SEPARATOR;
+    } else {
+        error_log("ProxmoxLXC: 在 \$params 中未找到 'modulepath' 或 'MODULE_PATH'。尝试使用 __DIR__。");
+        $module_base_path = __DIR__ . DIRECTORY_SEPARATOR;
+    }
+
+    if (empty($module_base_path)) {
+         error_log("ProxmoxLXC: 致命错误 - 无法确定模块基础路径。");
+         return "致命错误：无法确定模块的基础路径。";
+    }
+
+    $template_file = $module_base_path . 'templates' . DIRECTORY_SEPARATOR . $template_name . '.html';
+
+    error_log("ProxmoxLXC: 最终尝试加载模板的绝对路径: " . $template_file);
+
     if (file_exists($template_file)) {
         extract($data);
         ob_start();
         include $template_file;
         return ob_get_clean();
     }
-    return "模板文件未找到: " . htmlspecialchars($template_file);
+    
+    error_log("ProxmoxLXC: 模板文件未找到: " . $template_file);
+    return "模板文件未找到 (尝试路径): " . htmlspecialchars($template_file);
 }
+
 
 function proxmoxlxc_CreateAccount($params) {
     $api_details = _proxmoxlxc_get_api_details($params);
@@ -668,8 +694,16 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
         'node' => $node,
         'api_details' => $api_details,
         'js_module_custom_api_url' => $module_custom_api_url,
-        'params' => $params 
+        'params' => $params,
+        'Think' => ['get'=>$_GET] // 模拟 nokvm 中模板对 {$Think.get.jwt} 的访问方式
     ];
+
+    if (isset($_GET['jwt'])) { // ZJMF 通常通过 GET 参数传递 JWT 给模块自定义区域
+        $template_data['jwt_token'] = htmlspecialchars($_GET['jwt'], ENT_QUOTES);
+    } else {
+        $template_data['jwt_token'] = ''; // 或者尝试从 cookie 获取，但 GET 优先
+    }
+
 
     if ($key == 'info') {
         $status_response = _proxmoxlxc_call_api($api_details['base_url'], $api_details['api_key'], "containers/{$node}/{$vmid}/status", 'GET');
