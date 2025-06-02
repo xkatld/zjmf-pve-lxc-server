@@ -93,11 +93,13 @@ class ProxmoxService:
                 'name': config.get('hostname', f'CT-{vmid}'),
                 'uptime': status.get('uptime', 0),
                 'cpu': status.get('cpu', 0),
+                'cpus': config.get('cores'),
                 'mem': status.get('mem', 0),
                 'maxmem': status.get('maxmem', 0),
+                'disk': status.get('disk', 0),
+                'maxdisk': status.get('maxdisk', 0),
                 'template': config.get('template', '0') == '1'
             }
-
             return result
         except Exception as e:
             raise Exception(f"获取容器状态失败: {str(e)}")
