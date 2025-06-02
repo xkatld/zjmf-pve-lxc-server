@@ -619,6 +619,14 @@ function proxmoxlxc_Vnc($params) {
 }
 
 
+function proxmoxlxc_ClientArea($params) {
+    return [Add commentMore actions
+        'info' => ['name' => '实例信息'],
+        'nat_rules' => ['name' => 'NAT规则管理']
+    ];
+}
+
+
 function proxmoxlxc_ClientAreaOutput($params, $key) {
     $api_details = _proxmoxlxc_get_api_details($params);
     $vmid = htmlspecialchars($params['domain'] ?? '', ENT_QUOTES);
