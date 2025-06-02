@@ -840,7 +840,7 @@ async def delete_specific_nat_rule(
 
 @router.post("/containers/{node}/{vmid}/request-console-token",
              response_model=schemas.OperationResponse,
-             summary="Fordert ein temporäres Token für die Web-Konsole an",
+             summary="请求 Web 控制台的临时令牌",
              tags=["容器操作"])
 async def request_console_token(
     node: str,
