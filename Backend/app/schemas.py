@@ -87,18 +87,6 @@ class ContainerRebuild(BaseModel):
 class ContainerPasswordUpdate(BaseModel):
     password: str = Field(..., min_length=6, description="容器的新root密码", example="new_secure_password123")
 
-class ConsoleTicket(BaseModel):
-    ticket: str
-    port: int
-    user: str
-    node: str
-    host: str
-
-class ConsoleResponse(BaseModel):
-    success: bool
-    message: str
-    data: Optional[ConsoleTicket] = None
-
 class NodeInfo(BaseModel):
     node: str
     status: str
