@@ -654,7 +654,7 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
          $module_custom_api_url = $system_url . '/clientarea.php?action=productdetails&id=' . $hostid_for_js . '&modop=custom';
     }
     
-    $api_base_url_for_ws = rtrim($api_details['raw_api_url_for_ws'], '/') . '/api/v1';
+    $api_base_url_for_ws = rtrim($api_details['base_url'], '/');
 
 
     $template_data = [
@@ -795,5 +795,3 @@ function proxmoxlxc_deletenatrule($params) {
     }
     exit;
 }
-
-?>
