@@ -1,0 +1,12 @@
+<h3>实例概览</h3>
+<?php if ($status_info): ?>
+    <p><strong>VMID:</strong> <?php echo htmlspecialchars($status_info['vmid'] ?? '', ENT_QUOTES); ?></p>
+    <p><strong>节点:</strong> <?php echo htmlspecialchars($status_info['node'] ?? '', ENT_QUOTES); ?></p>
+    <p><strong>状态:</strong> <?php echo htmlspecialchars($status_info['status'] ?? '', ENT_QUOTES); ?></p>
+    <p><strong>名称:</strong> <?php echo htmlspecialchars($status_info['name'] ?? '', ENT_QUOTES); ?></p>
+    <p><strong>CPU使用率:</strong> <?php echo round(($status_info['cpu'] ?? 0) * 100, 2); ?>%</p>
+    <p><strong>内存使用:</strong> <?php echo round(($status_info['mem'] ?? 0) / (1024*1024), 2); ?> MB / <?php echo round(($status_info['maxmem'] ?? 0) / (1024*1024), 2); ?> MB</p>
+    <p><strong>运行时间:</strong> <?php echo htmlspecialchars($status_info['uptime_formatted'] ?? 'N/A', ENT_QUOTES); ?></p>
+<?php else: ?>
+    <div class='alert alert-danger'>获取实例信息失败: <?php echo $error_message_info; ?></div>
+<?php endif; ?>
