@@ -840,7 +840,7 @@ async def delete_specific_nat_rule(
 
 @router.post("/containers/{node}/{vmid}/request-console-token",
              response_model=schemas.OperationResponse,
-             summary="请求 Web 控制台的临时令牌",
+             summary="请求Web控制台的临时令牌",
              tags=["容器操作"])
 async def request_console_token(
     node: str,
@@ -851,11 +851,11 @@ async def request_console_token(
 ):
     request_id = request_task_id_cv.get()
     try:
-        client_user_id = request.client.host
+        client_user_id = request.client.host 
         console_token = proxmox_service.generate_console_session_token(node, vmid, client_user_id)
 
         log_operation(
-            db, "Anfrage Konsolentoken", vmid, node, "Erfolg",
+            db, "请求控制台令牌", vmid, node, "成功",
             "已成功创建临时控制台令牌。",
             request.client.host, task_id=request_id
         )
@@ -866,10 +866,10 @@ async def request_console_token(
         )
     except Exception as e:
         log_operation(
-            db, "Anfrage Konsolentoken", vmid, node, "Fehler",
+            db, "请求控制台令牌", vmid, node, "失败",
             str(e), request.client.host, task_id=request_id
         )
-        raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen des Konsolentokens: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"创建控制台令牌失败: {str(e)}")
 
 @router.websocket("/containers/{node}/{vmid}/ws-terminal")
 async def websocket_terminal(
@@ -901,7 +901,7 @@ async def websocket_terminal(
         )
 
         if is_windows:
-            await websocket.send_text("Web-Terminal is not supported on Windows hosts.\r\n")
+            await websocket.send_text("Web终端在Windows主机上不受支持。\r\n")
             await websocket.close(code=1011)
             log_operation(
                 db, "WebSocket连接", vmid, node, "失败",
@@ -936,7 +936,7 @@ async def websocket_terminal(
             except Exception:
                 try:
                     if ws.client_state != WebSocketDisconnect:
-                        await ws.send_text(f"\r\nError reading from container stream.\r\n")
+                        await ws.send_text(f"\r\n从容器流读取时出错。\r\n")
                 except Exception:
                     pass
             finally:
@@ -998,7 +998,7 @@ async def websocket_terminal(
         log_operation(db, "WebSocket错误", vmid, node, "错误", str(e), websocket.client.host, task_id=request_id)
         try:
             if websocket.client_state != WebSocketDisconnect:
-                await websocket.send_text(f"\r\nServer error: {str(e)}\r\n")
+                await websocket.send_text(f"\r\n服务器错误: {str(e)}\r\n")
         except Exception:
             pass
         if websocket.client_state != WebSocketDisconnect:
