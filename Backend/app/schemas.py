@@ -84,6 +84,9 @@ class ContainerRebuild(BaseModel):
     features: Optional[str] = Field(None, description="新的额外功能特性", example="nesting=1")
     console_mode: Optional[ConsoleMode] = Field(ConsoleMode.DEFAULT_TTY, description="选择新的控制台模式: '默认 (tty)' 或 'shell'", example=ConsoleMode.DEFAULT_TTY)
 
+class ContainerPasswordUpdate(BaseModel):
+    password: str = Field(..., min_length=6, description="容器的新root密码", example="new_secure_password123")
+
 class ConsoleTicket(BaseModel):
     ticket: str
     port: int
@@ -127,7 +130,6 @@ class NatRuleUpdate(BaseModel):
     protocol: Optional[str] = Field(None, pattern="^(tcp|udp)$", description="协议 (tcp 或 udp)")
     description: Optional[str] = Field(None, max_length=255, description="规则描述")
     enabled: Optional[bool] = Field(None, description="是否启用规则")
-
 
 class NatRuleDisplay(NatRuleBase):
     id: int
