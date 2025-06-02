@@ -314,10 +314,6 @@ function _proxmoxlxc_render_template($params, $template_name, $data = []) {
         $module_base_path = rtrim($params['modulepath'], DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
     } elseif (isset($params['MODULE_PATH']) && !empty($params['MODULE_PATH'])) {
         $module_base_path = rtrim($params['MODULE_PATH'], DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-        // If MODULE_PATH points to 'modules/servers/', we might need to append the module name.
-        // However, based on ZJMF docs for 'modulepath', it should already point to the specific module directory.
-        // Let's assume $params['MODULE_PATH'] also points to the specific module dir if 'modulepath' is absent.
-        // If it was '.../servers/' then $module_base_path .= ($params['module_type'] ?? 'proxmoxlxc') . DIRECTORY_SEPARATOR;
     } else {
         error_log("ProxmoxLXC: 在 \$params 中未找到 'modulepath' 或 'MODULE_PATH'。尝试使用 __DIR__。");
         $module_base_path = __DIR__ . DIRECTORY_SEPARATOR;
@@ -330,7 +326,7 @@ function _proxmoxlxc_render_template($params, $template_name, $data = []) {
 
     $template_file = $module_base_path . 'templates' . DIRECTORY_SEPARATOR . $template_name . '.html';
 
-    error_log("ProxmoxLXC: 最终尝试加载模板的绝对路径: " . $template_file);
+    // error_log("ProxmoxLXC: 最终尝试加载模板的绝对路径: " . $template_file); // 可以注释掉这行，如果已确认路径正确
 
     if (file_exists($template_file)) {
         extract($data);
@@ -673,7 +669,8 @@ function proxmoxlxc_Status($params) {
 function proxmoxlxc_ClientArea($params) {
     return [
         'info' => ['name' => '实例信息'],
-        'nat_rules' => ['name' => 'NAT规则管理']
+        'nat_rules' => ['name' => 'NAT规则管理'],
+        'terminal' => ['name' => '控制台'] 
     ];
 }
 
@@ -695,13 +692,13 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
         'api_details' => $api_details,
         'js_module_custom_api_url' => $module_custom_api_url,
         'params' => $params,
-        'Think' => ['get'=>$_GET] // 模拟 nokvm 中模板对 {$Think.get.jwt} 的访问方式
+        'Think' => ['get'=>$_GET] 
     ];
 
-    if (isset($_GET['jwt'])) { // ZJMF 通常通过 GET 参数传递 JWT 给模块自定义区域
+    if (isset($_GET['jwt'])) { 
         $template_data['jwt_token'] = htmlspecialchars($_GET['jwt'], ENT_QUOTES);
     } else {
-        $template_data['jwt_token'] = ''; // 或者尝试从 cookie 获取，但 GET 优先
+        $template_data['jwt_token'] = ''; 
     }
 
 
@@ -746,6 +743,19 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
         $template_data['error_message_rules'] = $error_message_rules;
         return _proxmoxlxc_render_template($params, 'nat_rules', $template_data);
     }
+
+    if ($key == 'terminal') {
+        $vnc_details = proxmoxlxc_Vnc($params); // Re-use the existing VNC function
+        if ($vnc_details['status'] == 'success' && isset($vnc_details['url'])) {
+            $template_data['vnc_url'] = $vnc_details['url'];
+            $template_data['error_message_terminal'] = null;
+        } else {
+            $template_data['vnc_url'] = null;
+            $template_data['error_message_terminal'] = $vnc_details['msg'] ?? '无法获取控制台连接信息。';
+        }
+        return _proxmoxlxc_render_template($params, 'terminal', $template_data);
+    }
+
     return '';
 }
 
