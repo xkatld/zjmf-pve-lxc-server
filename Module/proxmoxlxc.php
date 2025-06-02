@@ -618,14 +618,31 @@ function proxmoxlxc_Vnc($params) {
     return ['status' => 'error', 'msg' => $response['message'] ?? $response['msg'] ?? '获取VNC控制台失败'];
 }
 
+function proxmoxlxc_Status($params) {
+    $api_details = _proxmoxlxc_get_api_details($params);
+    $vmid = $params['domain'];
+    $response = _proxmoxlxc_call_api($api_details['base_url'], $api_details['api_key'], "containers/{$api_details['node']}/{$vmid}/status", 'GET');
+
+    if (isset($response['vmid'])) { 
+        $status_map = [
+            'running' => ['status' => 'on', 'des' => '运行中'],
+            'stopped' => ['status' => 'off', 'des' => '已关机'],
+        ];
+        $pve_status = strtolower($response['status'] ?? 'unknown');
+        $client_status = $status_map[$pve_status] ?? ['status' => 'unknown', 'des' => '未知 (' . ($response['status'] ?? 'N/A') . ')'];
+        
+        return ['status' => 'success', 'data' => $client_status];
+    }
+    return ['status' => 'error', 'msg' => $response['detail'] ?? $response['message'] ?? $response['msg'] ?? '获取状态失败'];
+}
+
 
 function proxmoxlxc_ClientArea($params) {
-    return [Add commentMore actions
+    return [
         'info' => ['name' => '实例信息'],
         'nat_rules' => ['name' => 'NAT规则管理']
     ];
 }
-
 
 function proxmoxlxc_ClientAreaOutput($params, $key) {
     $api_details = _proxmoxlxc_get_api_details($params);
@@ -635,7 +652,6 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
     
     $module_custom_api_url = htmlspecialchars($params['MODULE_CUSTOM_API'] ?? '', ENT_QUOTES);
     if (empty($module_custom_api_url)) {
-         // Fallback if $MODULE_CUSTOM_API is not provided by ZJMF when returning raw HTML
          $system_url = rtrim(htmlspecialchars($params['systemurl'] ?? '/', ENT_QUOTES), '/');
          $module_custom_api_url = $system_url . '/clientarea.php?action=productdetails&id=' . $hostid_for_js . '&modop=custom';
     }
@@ -683,7 +699,7 @@ function proxmoxlxc_ClientAreaOutput($params, $key) {
             $error_message_rules = '加载NAT规则时发生未知错误。';
         }
 
-        $js_module_custom_api_url = $module_custom_api_url; // Already HTML-escaped
+        $js_module_custom_api_url = $module_custom_api_url; 
 
         $html = <<<HTML
 <style>
@@ -745,8 +761,6 @@ function submitPmxNatForm(event, formId, funcName) {
     event.preventDefault();
     const form = document.getElementById(formId);
     const formData = new FormData(form);
-    // formData.append('func', funcName); // ZJMF adds 'func' from action string in some setups
-    // formData.append('hostid', '{$hostid_for_js}'); // ZJMF adds 'hostid'
     
     const messageDivId = formId + 'Message';
     const messageDiv = document.getElementById(messageDivId);
