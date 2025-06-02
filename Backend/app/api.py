@@ -4,8 +4,8 @@ from typing import List, Dict, Any
 from .database import get_db
 from .auth import verify_api_key, log_operation
 from .proxmox import proxmox_service
-from . import schemas, models # Added models
-from . import nat_service # Added nat_service
+from . import schemas, models
+from . import nat_service
 from .logging_context import request_task_id_cv
 
 
@@ -426,6 +426,50 @@ async def reboot_container(
         )
         raise HTTPException(status_code=500, detail=f"重启容器失败: {str(e)}")
 
+@router.post("/containers/{node}/{vmid}/change-password", response_model=schemas.OperationResponse, summary="修改容器密码",
+             description="修改指定LXC容器的root用户密码。",
+             tags=["容器操作"])
+async def change_container_password_api(
+    node: str,
+    vmid: str,
+    password_data: schemas.ContainerPasswordUpdate,
+    request: Request,
+    _: bool = Depends(verify_api_key),
+    db: Session = Depends(get_db)
+):
+    request_id = request_task_id_cv.get()
+    pve_task_id = None
+    try:
+        result = proxmox_service.change_container_password(node, vmid, password_data.password)
+        pve_task_id = result.get('task_id')
+        effective_task_id = pve_task_id or request_id
+
+        log_operation(
+            db, "修改容器密码",
+            vmid, node,
+            "成功" if result['success'] else "失败",
+            result['message'], request.client.host,
+            task_id=effective_task_id
+        )
+
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['message'])
+
+        return schemas.OperationResponse(
+            success=result['success'],
+            message=result['message'],
+            data={'task_id': effective_task_id} if result['success'] else None
+        )
+
+    except Exception as e:
+        log_operation(
+            db, "修改容器密码",
+            vmid, node, "失败",
+            str(e), request.client.host,
+            task_id=pve_task_id or request_id
+        )
+        raise HTTPException(status_code=500, detail=f"修改容器密码失败: {str(e)}")
+
 @router.delete("/containers/{node}/{vmid}", response_model=schemas.OperationResponse, summary="删除容器",
                description="删除指定的LXC容器。**危险操作，请谨慎使用！**",
                tags=["容器操作"])
@@ -592,7 +636,6 @@ async def resync_nat_rules_endpoint(
             message, request.client.host, task_id=request_id
         )
         if not success:
-             # Even if not fully successful, we might return 200 with details
              return schemas.OperationResponse(success=False, message=message, data=stats)
         return schemas.OperationResponse(success=True, message=message, data=stats)
     except Exception as e:
@@ -632,7 +675,7 @@ async def create_nat_rule_for_container(
         if not db_rule:
             raise HTTPException(status_code=400, detail=message)
         
-        if not db_rule.enabled and "iptables应用失败" in message: # Partial success, rule in DB but not active
+        if not db_rule.enabled and "iptables应用失败" in message: 
              return schemas.NatRuleResponse(success=False, message=message, data=schemas.NatRuleDisplay.from_orm(db_rule))
 
 
@@ -797,7 +840,7 @@ async def update_specific_nat_rule(
 
 @router.delete(
     "/nat/rules/{rule_id}",
-    response_model=schemas.OperationResponse, # Using generic OperationResponse
+    response_model=schemas.OperationResponse,
     summary="删除指定的NAT规则",
     tags=["NAT管理"]
 )
@@ -808,7 +851,6 @@ async def delete_specific_nat_rule(
     db: Session = Depends(get_db)
 ):
     request_id = request_task_id_cv.get()
-    # Store details for logging before potential deletion
     rule_to_log = nat_service.get_nat_rule_by_id(db, rule_id)
     node_for_log = rule_to_log.node if rule_to_log else "系统"
     vmid_for_log = str(rule_to_log.vmid) if rule_to_log else str(rule_id)
