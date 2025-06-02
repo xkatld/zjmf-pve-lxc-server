@@ -61,7 +61,11 @@
     <button id="proxmoxlxc_connect_btn" class="proxmoxlxc-terminal-btn">连接终端</button>
 </div>
 <div id="proxmoxlxc_terminal_status_area">
-    <div class="proxmoxlxc-terminal-status proxmoxlxc-terminal-status-default">点击“连接终端”按钮以启动。</div>
+    <?php if (!empty($error_message_terminal)): ?>
+        <div class="proxmoxlxc-terminal-status proxmoxlxc-terminal-status-error"><?php echo htmlspecialchars($error_message_terminal); ?></div>
+    <?php else: ?>
+        <div class="proxmoxlxc-terminal-status proxmoxlxc-terminal-status-default">点击“连接终端”按钮以启动。</div>
+    <?php endif; ?>
 </div>
 <div class="proxmoxlxc-terminal-container">
     <div id="proxmoxlxc_terminal"></div>
@@ -75,6 +79,13 @@ document.addEventListener('DOMContentLoaded', function() {
     let term;
     let socket;
     let fitAddon;
+
+    const productId = '<?php echo $product_id; ?>';
+    const customApiUrl = '<?php echo $js_module_custom_api_url; ?>';
+    const vmid = '<?php echo $vmid; ?>';
+    const node = '<?php echo $node; ?>';
+    const jwtTokenFromPhp = '<?php echo $jwt_token; ?>';
+
 
     function updateStatus(message, type = 'default') {
         let className = 'proxmoxlxc-terminal-status-default';
@@ -105,8 +116,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function initTerminal(wsUrl, ticket) {
         if (!terminalContainer) {
-            updateStatus('终端容器未找到。', 'error');
-            console.error('Terminal container #proxmoxlxc_terminal not found.');
+            updateStatus('终端容器DIV元素未找到。', 'error');
             connectButton.disabled = false;
             return;
         }
@@ -137,7 +147,6 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             fitAddon.fit(); 
         } catch (e) {
-            console.warn("Fit addon initial fit failed:", e);
         }
 
         window.addEventListener('resize', () => {
@@ -146,16 +155,16 @@ document.addEventListener('DOMContentLoaded', function() {
                      fitAddon.fit();
                 }
             } catch (e) {
-                console.warn("Fit addon resize failed:", e);
             }
         });
         
-        updateStatus(`正在连接到: ${wsUrl}`, 'connecting');
+        updateStatus(`正在连接到 WebSocket: ${wsUrl.split('?')[0]}...`, 'connecting');
         socket = new WebSocket(wsUrl);
 
         socket.onopen = function() {
-            updateStatus('连接成功，正在认证...', 'connecting');
-            socket.send(ticket + "\n"); 
+            updateStatus('WebSocket 连接成功，正在发送票据...', 'connecting');
+            
+            socket.send(ticket); 
 
             const attachAddon = new AttachAddon.AttachAddon(socket);
             term.loadAddon(attachAddon); 
@@ -167,13 +176,17 @@ document.addEventListener('DOMContentLoaded', function() {
              try {
                 fitAddon.fit(); 
             } catch (e) {
-                console.warn("Fit addon after connect fit failed:", e);
             }
         };
 
         socket.onerror = function(event) {
-            console.error('WebSocket Error:', event);
-            updateStatus(`WebSocket连接错误: ${event.type || '未知错误'}`, 'error');
+            let errorDetail = event.type || '未知错误';
+            try {
+                const eventStr = JSON.stringify(event);
+                if(eventStr.length > 2) errorDetail = eventStr.substring(0, 100);
+            } catch(e) {}
+
+            updateStatus(`WebSocket连接错误: ${errorDetail}`, 'error');
             if(term) term.write('\r\n\x1b[31mWebSocket 连接错误。\x1b[0m\r\n');
             connectButton.textContent = '连接终端';
             connectButton.disabled = false;
@@ -182,11 +195,13 @@ document.addEventListener('DOMContentLoaded', function() {
         socket.onclose = function(event) {
             let reason = '';
             if (event.code) reason += `代码: ${event.code}`;
-            if (event.reason) reason += (reason ? ', ' : '') + `原因: ${event.reason}`;
+            if (event.reason) reason += (reason ? ', ' : '') + `原因: ${proxmoxlxcEscapeHtml(event.reason)}`;
             if (!reason) reason = '连接已关闭。';
             
             updateStatus(`终端已断开: ${reason}`, 'disconnected');
-            if(term) term.write(`\r\n\x1b[33mWebSocket 连接已关闭 (${reason}).\x1b[0m\r\n`);
+            if(term && term.textarea) { 
+                 term.write(`\r\n\x1b[33mWebSocket 连接已关闭 (${reason}).\x1b[0m\r\n`);
+            }
             connectButton.textContent = '连接终端';
             connectButton.disabled = false;
         };
@@ -210,12 +225,17 @@ document.addEventListener('DOMContentLoaded', function() {
         connectButton.textContent = '连接中...';
         updateStatus('正在获取连接信息...', 'connecting');
 
-        const fetchUrl = '<?php echo $custom_api_url; ?>&func=getterminalticket&product_id=<?php echo $product_id; ?>';
-        const zjmfJwtToken = proxmoxlxcGetCookie('ZJMF_474FFBE2DC4BDFD9'); 
+        const fetchUrl = `${customApiUrl}&func=getterminalticket&product_id=${productId}&vmid=${encodeURIComponent(vmid)}&node=${encodeURIComponent(node)}&jwt=${encodeURIComponent(jwtTokenFromPhp)}`;
+        
+        const zjmfClientAreaJwtToken = proxmoxlxcGetCookie('ZJMF_CLIENTAREA_AUTH_TOKEN'); 
         const requestHeaders = {};
-        if (zjmfJwtToken) {
-            requestHeaders['Authorization'] = 'Bearer ' + zjmfJwtToken;
+
+        if (zjmfClientAreaJwtToken) {
+            requestHeaders['Authorization'] = 'Bearer ' + zjmfClientAreaJwtToken;
+        } else if (jwtTokenFromPhp) {
+            requestHeaders['Authorization'] = 'Bearer ' + jwtTokenFromPhp;
         }
+
 
         fetch(fetchUrl, {
             method: 'GET', 
@@ -240,14 +260,12 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 const errorMsg = data.msg || '从服务器获取终端信息失败。';
                 updateStatus(errorMsg, 'error');
-                console.error('Failed to get terminal info:', data);
                 connectButton.textContent = '连接终端';
                 connectButton.disabled = false;
             }
         })
         .catch(error => {
             updateStatus(`初始化终端时出错: ${error.message}`, 'error');
-            console.error('Error initializing terminal:', error);
             connectButton.textContent = '连接终端';
             connectButton.disabled = false;
         });
@@ -255,12 +273,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (connectButton) {
         connectButton.addEventListener('click', function() {
-            if (socket && socket.readyState === WebSocket.OPEN) {
+            if (this.textContent === '断开连接') {
                 disconnectTerminal();
             } else {
                 startConnectionProcess();
             }
         });
+    } else {
+        updateStatus("无法找到连接按钮。", "error");
     }
 });
 </script>
