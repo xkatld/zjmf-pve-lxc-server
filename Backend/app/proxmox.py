@@ -78,7 +78,7 @@ class ProxmoxService:
             logger.error(f"获取容器列表失败: {str(e)}")
             raise Exception(f"获取容器列表失败: {str(e)}")
 
-    def get_container_status(self, node: str, vmid: str) -> Dict[str, Any]]:
+    def get_container_status(self, node: str, vmid: str) -> Dict[str, Any]:
         try:
             status = self._call_proxmox_api(self.proxmox.nodes(node).lxc(vmid).status.current.get)
             config = self._call_proxmox_api(self.proxmox.nodes(node).lxc(vmid).config.get)
