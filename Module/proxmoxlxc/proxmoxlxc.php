@@ -4,7 +4,7 @@ use app\common\model\HostModel;
 use think\Db;
 
 function proxmoxlxc_MetaData(){
-	return ['DisplayName'=>'ProxmoxVE-LXC对接模块', 'APIVersion'=>'2.0', 'HelpDoc'=>'https://www.almondnet.cn/'];
+	return ['DisplayName'=>'ProxmoxVE-LXC对接模块', 'APIVersion'=>'2.0', 'HelpDoc'=>'https://github.com/xkatld/zjmf-pve-lxc-server'];
 }
 
 function proxmoxlxc_TestLink($params){
