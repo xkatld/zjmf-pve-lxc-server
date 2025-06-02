@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Query, Path, Body
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, Path, Body, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 from .database import get_db
 from .auth import verify_api_key, log_operation
 from .proxmox import proxmox_service
-from . import schemas, models
+from . import schemas
 from . import nat_service
 from .logging_context import request_task_id_cv
-
+import asyncio
+import os
 
 router = APIRouter()
 
@@ -560,60 +561,22 @@ async def rebuild_container_api(
             tags=["任务管理"])
 async def get_task_status(
     node: str,
-    task_id: str, 
+    task_id: str,
     request: Request,
     _: bool = Depends(verify_api_key),
-    db: Session = Depends(get_db) 
+    db: Session = Depends(get_db)
 ):
     try:
-        task_status = proxmox_service.get_task_status(node, task_id)
+        task_status_data = proxmox_service.get_task_status(node, task_id)
         return schemas.OperationResponse(
             success=True,
             message="任务状态获取成功",
-            data=task_status 
+            data=task_status_data
         )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取任务状态失败: {str(e)}")
 
-@router.post("/containers/{node}/{vmid}/console", response_model=schemas.ConsoleResponse, summary="获取容器控制台票据",
-             description="获取用于连接到LXC容器控制台的票据和连接信息。",
-             tags=["容器操作"])
-async def get_container_console(
-    node: str,
-    vmid: str,
-    request: Request,
-    _: bool = Depends(verify_api_key),
-    db: Session = Depends(get_db)
-):
-    request_id = request_task_id_cv.get()
-    try:
-        result = proxmox_service.get_container_console(node, vmid)
-
-        log_operation(
-            db, "获取控制台",
-            vmid, node, "成功" if result['success'] else "失败",
-            result['message'], request.client.host,
-            task_id=request_id 
-        )
-
-        if not result['success']:
-            raise HTTPException(status_code=500, detail=result['message'])
-        
-        return schemas.ConsoleResponse(
-            success=result['success'],
-            message=result['message'],
-            data=result.get('data')
-        )
-
-    except Exception as e:
-        log_operation(
-            db, "获取控制台",
-            vmid, node, "失败",
-            str(e), request.client.host,
-            task_id=request_id
-        )
-        raise HTTPException(status_code=500, detail=f"获取控制台失败: {str(e)}")
 
 @router.post(
     "/nat/rules/resync",
@@ -665,7 +628,7 @@ async def create_nat_rule_for_container(
     request_id = request_task_id_cv.get()
     try:
         db_rule, message = nat_service.create_nat_rule(db, node, vmid, rule_create)
-        
+
         status_log = "成功" if db_rule and db_rule.enabled else "失败" if not db_rule else "警告"
         log_operation(
             db, "创建NAT规则", f"{node}/{vmid}", node, status_log,
@@ -674,8 +637,8 @@ async def create_nat_rule_for_container(
 
         if not db_rule:
             raise HTTPException(status_code=400, detail=message)
-        
-        if not db_rule.enabled and "iptables应用失败" in message: 
+
+        if not db_rule.enabled and "iptables应用失败" in message:
              return schemas.NatRuleResponse(success=False, message=message, data=schemas.NatRuleDisplay.from_orm(db_rule))
 
 
@@ -781,7 +744,7 @@ async def get_specific_nat_rule(
                 "规则未找到", request.client.host, task_id=request_id
             )
             raise HTTPException(status_code=404, detail="未找到指定的NAT规则。")
-        
+
         log_operation(
             db, "获取NAT规则详情", str(rule_id), "系统", "成功",
             f"成功获取规则 ID {rule_id}。", request.client.host, task_id=request_id
@@ -813,7 +776,7 @@ async def update_specific_nat_rule(
     request_id = request_task_id_cv.get()
     try:
         updated_rule, message = nat_service.update_nat_rule(db, rule_id, rule_update)
-        
+
         status_log = "失败"
         if updated_rule:
             status_log = "成功" if updated_rule.enabled and "iptables应用失败" not in message and "已被禁用" not in message else "警告"
@@ -857,7 +820,7 @@ async def delete_specific_nat_rule(
 
     try:
         success, message = nat_service.delete_nat_rule(db, rule_id)
-        
+
         log_operation(
             db, "删除NAT规则", f"{node_for_log}/{vmid_for_log}", node_for_log, "成功" if success else "失败",
             message, request.client.host, task_id=request_id
@@ -865,7 +828,7 @@ async def delete_specific_nat_rule(
 
         if not success:
             raise HTTPException(status_code=404 if "未找到" in message else 400, detail=message)
-        
+
         return schemas.OperationResponse(success=True, message=message)
     except HTTPException:
         raise
@@ -875,3 +838,144 @@ async def delete_specific_nat_rule(
             str(e), request.client.host, task_id=request_id
         )
         raise HTTPException(status_code=500, detail=f"删除NAT规则时发生内部错误: {str(e)}")
+
+@router.websocket("/containers/{node}/{vmid}/ws-terminal")
+async def websocket_terminal(
+    websocket: WebSocket,
+    node: str,
+    vmid: str,
+    token: str = Query(None),
+    db: Session = Depends(get_db)
+):
+    await websocket.accept()
+    request_id = request_task_id_cv.get()
+
+    if not token or not proxmox_service.verify_console_session_token(token):
+        await websocket.close(code=1008)
+        return
+
+    process = None
+    shell_command = f"pct enter {vmid}"
+    is_windows = os.name == 'nt'
+
+    try:
+        log_operation(
+            db, "WebSocket连接", vmid, node, "尝试",
+            f"客户端 {websocket.client.host} 尝试连接到终端。",
+            websocket.client.host, task_id=request_id
+        )
+
+        if is_windows:
+            await websocket.send_text("Web-Terminal is not supported on Windows hosts.\r\n")
+            await websocket.close(code=1011)
+            log_operation(
+                db, "WebSocket连接", vmid, node, "失败",
+                "后端服务器在Windows上运行，不支持Web终端",
+                websocket.client.host, task_id=request_id
+            )
+            return
+
+        process = await asyncio.create_subprocess_shell(
+            shell_command,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=os.environ.copy()
+        )
+
+        log_operation(
+            db, "WebSocket连接", vmid, node, "成功",
+            f"客户端 {websocket.client.host} 已连接到终端。",
+            websocket.client.host, task_id=request_id
+        )
+
+        async def forward_to_websocket(pipe, ws):
+            try:
+                while True:
+                    data = await pipe.read(4096)
+                    if not data:
+                        break
+                    await ws.send_bytes(data)
+            except asyncio.CancelledError:
+                pass
+            except Exception as e_ws_fwd:
+                try:
+                    await ws.send_text(f"\r\nError reading from container: {str(e_ws_fwd)}\r\n")
+                except Exception:
+                    pass
+            finally:
+                if not ws.client_state == WebSocketDisconnect:
+                     pass
+
+        async def forward_to_container(pipe, ws):
+            try:
+                while True:
+                    message = await ws.receive()
+                    if message["type"] == "websocket.receive":
+                        data_to_send = message.get("bytes") or message.get("text","").encode()
+                        if data_to_send:
+                            pipe.write(data_to_send)
+                            await pipe.drain()
+                    elif message["type"] == "websocket.disconnect":
+                        break
+            except asyncio.CancelledError:
+                pass
+            except Exception as e_container_fwd:
+                 pass
+            finally:
+                pass
+
+        stdout_task = asyncio.create_task(forward_to_websocket(process.stdout, websocket))
+        stderr_task = asyncio.create_task(forward_to_websocket(process.stderr, websocket))
+        stdin_task = asyncio.create_task(forward_to_container(process.stdin, websocket))
+
+        done, pending = await asyncio.wait(
+            [stdout_task, stderr_task, stdin_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        for task in pending:
+            task.cancel()
+
+    except WebSocketDisconnect:
+        log_operation(
+            db, "WebSocket断开", vmid, node, "信息",
+            f"客户端 {websocket.client.host} 断开连接。",
+            websocket.client.host, task_id=request_id
+        )
+    except ConnectionRefusedError:
+        error_msg = f"无法连接到容器 {vmid} shell。请确认Proxmox主机配置和容器状态。"
+        log_operation(db, "WebSocket错误", vmid, node, "错误", error_msg, websocket.client.host, task_id=request_id)
+        try:
+            await websocket.send_text(f"\r\n{error_msg}\r\n")
+        except Exception:
+            pass
+        await websocket.close(code=1011)
+    except Exception as e:
+        error_msg = f"WebSocket 内部错误: {str(e)}"
+        log_operation(db, "WebSocket错误", vmid, node, "错误", str(e), websocket.client.host, task_id=request_id)
+        try:
+            if websocket.client_state != WebSocketDisconnect:
+                await websocket.send_text(f"\r\nServer error: {str(e)}\r\n")
+        except Exception:
+            pass
+        if websocket.client_state != WebSocketDisconnect:
+            await websocket.close(code=1011)
+    finally:
+        if process and process.returncode is None:
+            try:
+                process.terminate()
+                await asyncio.wait_for(process.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                process.kill()
+            except Exception:
+                pass
+        if stdout_task and not stdout_task.done(): stdout_task.cancel()
+        if stderr_task and not stderr_task.done(): stderr_task.cancel()
+        if stdin_task and not stdin_task.done(): stdin_task.cancel()
+
+        if websocket.client_state != WebSocketDisconnect:
+             try:
+                 await websocket.close()
+             except Exception:
+                 pass
