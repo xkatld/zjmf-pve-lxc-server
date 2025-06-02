@@ -2,11 +2,14 @@
 use app\common\logic\RunMap;
 use app\common\model\HostModel;
 use think\Db;
+
 function proxmoxlxc_MetaData(){
 	return ['DisplayName'=>'ProxmoxVE-LXC对接模块', 'APIVersion'=>'2.0', 'HelpDoc'=>'https://www.almondnet.cn/'];
 }
+
 function proxmoxlxc_TestLink($params){
     $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['hostname']."/status"),true);
+    
     if($info==null || $info['data']==null){
         $result['status'] = 200;
 		$result['data']['server_status'] = 0;
@@ -19,6 +22,7 @@ function proxmoxlxc_TestLink($params){
     	 return $result;
     }
 }
+
 function proxmoxlxc_ConfigOptions(){
     return [
         [
@@ -170,7 +174,9 @@ function proxmoxlxc_ConfigOptions(){
             'key'=>'nesting'
         ],
     ];
+		
 }
+
 function proxmoxlxc_ClientArea($params){
     $info = [
         'info'=>['name'=>'信息'],
@@ -182,9 +188,12 @@ function proxmoxlxc_ClientArea($params){
     if($params['configoptions']['nat']=='nat'){
         $info['nat']=['name'=>'端口映射'];
     }
+    
     $info['rw']=['name'=>'操作记录'];
+
     return $info;
 }
+
 function proxmoxlxc_ClientAreaOutput($params, $key){
     if($key == "demo"){
         return [
@@ -194,6 +203,7 @@ function proxmoxlxc_ClientAreaOutput($params, $key){
             ]
         ];
     }
+    
     if($key == "info"){
         return [
             'template'=>'templates/info.html',
@@ -241,6 +251,7 @@ function proxmoxlxc_ClientAreaOutput($params, $key){
         $nat_list = proxmoxlxc_nat_get_list($params);
         $min_port = (int)$params['configoptions']['port_pool_start'];
         $max_port = (int)$params['configoptions']['port_pool_end'];
+        
         if($nat_list['ErrMsg']=='Success'){
             return [
             'template'=>'templates/nat.html',
@@ -252,8 +263,8 @@ function proxmoxlxc_ClientAreaOutput($params, $key){
                 'min_port'=>$min_port
             ]
         ];
-         }else{
-             return  [
+        }else{
+            return  [
             'template'=>'templates/error.html',
             'vars'=>[
                 'error'=>[
@@ -263,11 +274,13 @@ function proxmoxlxc_ClientAreaOutput($params, $key){
                     ]
             ]
         ];
-         }
+        }
     }else if($key == "connect"){
-            $port ="null";
+        $port ="null";
+        
         if($params['configoptions']['nat']=='nat'){
             $nat_list = proxmoxlxc_nat_get_list($params);
+        
             if($nat_list['ErrMsg']=='Success'){
                 foreach ($nat_list['Data']['data'] as $value){
                     if($value['lan_port']=='22'){
@@ -278,6 +291,7 @@ function proxmoxlxc_ClientAreaOutput($params, $key){
         }else{
             $port = '22';
         }
+        
         return [
             'template'=>'templates/connect.html',
             'vars'=>[
@@ -288,103 +302,60 @@ function proxmoxlxc_ClientAreaOutput($params, $key){
         ];
     }
 }
+
 function proxmoxlxc_AllowFunction(){
 	return [
 		'client'=>["Getcurrent","delete_snapshot","RollBACK_snapshot","create_snapshot","nat_add","nat_del","Vnc"],
 	];
 }
+
 function proxmoxlxc_Chart(){
  return [
     'cpu'=>[
         'title'=>'CPU使用率',
         'select'=>[
-				[
-        					'name'=>'1小时',
-        					'value'=>'hour'
-        		],
-        		[
-        					'name'=>'一天',
-        					'value'=>'day'
-        					
-        		],
-        		[
-        					'name'=>'七天',
-        					'value'=>'week'
-        		],[
-        					'name'=>'一月',
-        					'value'=>'month'
-        		],
+				['name'=>'1小时','value'=>'hour'],
+        		['name'=>'一天','value'=>'day'],
+        		['name'=>'七天','value'=>'week'],
+                ['name'=>'一月','value'=>'month'],
 			]
     ],
     'mem'=>[
         'title'=>'内存使用率',
         'select'=>[
-				[
-        					'name'=>'1小时',
-        					'value'=>'hour'
-        		],
-        		[
-        					'name'=>'一天',
-        					'value'=>'day'
-        					
-        		],
-        		[
-        					'name'=>'七天',
-        					'value'=>'week'
-        		],[
-        					'name'=>'一月',
-        					'value'=>'month'
-        		],
+				['name'=>'1小时','value'=>'hour'],
+        		['name'=>'一天','value'=>'day'],
+        		['name'=>'七天','value'=>'week'],
+                ['name'=>'一月','value'=>'month'],
 			]
     ],
     'disk'=>[
         'title'=>'硬盘IO',
         'select'=>[
-				[
-        					'name'=>'1小时',
-        					'value'=>'hour'
-        		],
-        		[
-        					'name'=>'一天',
-        					'value'=>'day'
-        					
-        		],
-        		[
-        					'name'=>'七天',
-        					'value'=>'week'
-        		],[
-        					'name'=>'一月',
-        					'value'=>'month'
-        		],
+				['name'=>'1小时','value'=>'hour'],
+        		['name'=>'一天','value'=>'day'],
+        		['name'=>'七天','value'=>'week'],
+                ['name'=>'一月','value'=>'month'],
 			]
     ],
     'network'=>[
         'title'=>'网络流量',
         'select'=>[
-				[
-        					'name'=>'1小时',
-        					'value'=>'hour'
-        		],
-        		[
-        					'name'=>'一天',
-        					'value'=>'day'
-        					
-        		],
-        		[
-        					'name'=>'七天',
-        					'value'=>'week'
-        		],[
-        					'name'=>'一月',
-        					'value'=>'month'
-        		],
+				['name'=>'1小时','value'=>'hour'],
+        		['name'=>'一天','value'=>'day'],
+        		['name'=>'七天','value'=>'week'],
+                ['name'=>'一月','value'=>'month'],
 			]
     ],
 ];
 }
+
 function proxmoxlxc_ChartData($params){
     $uptime = proxmoxlxc_GET_lxc_info($params)['data']['uptime'];
     $timeframe = $params['chart']['select'];
+    
     $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/rrddata?timeframe=".$timeframe),true);
+    
     if($params['chart']['type'] == 'cpu'){
         foreach ($info['data'] as $value){
             $cpu = substr($value['cpu'] * 100,0,2);
@@ -452,6 +423,7 @@ function proxmoxlxc_ChartData($params){
     }
     return $result;
 }
+
 function proxmoxlxc_Vnc($params){
     if(!proxmoxlxc_vnc_if($params)){
         return ['status'=>'error','msg'=>'VNC功能未启用'];
@@ -461,40 +433,51 @@ function proxmoxlxc_Vnc($params){
         return ['status'=>'success','msg'=>'VNC连接创建成功','url'=>$params['server_http_prefix']."://".$params['server_ip'].":".$params['port']."/novnc/mgnovnc.html?xtermjs=1&console=lxc&node=".$params['server_host']."&vmid=".$params['domain']."&token=".$ticket];
     }
 }
+
 function proxmoxlxc_CreateAccount($params){
     $ip_while_num_max = 100;
     $ip_while_num = 0 ;
     $vmid = proxmoxlxc_nextid($params);
+    
     $temp_ip_ = explode(",",$params['configoptions']['ip_pool']);
     $temp_ip_start = explode(".",$temp_ip_[0]);
     $temp_ip_end = explode(".",$temp_ip_[1]);
+    
     while_ip:
     if($ip_while_num>=$ip_while_num_max ){
         return ['status'=>'error','msg'=>"无可用IP地址"];
     }
+    
     $ip = $temp_ip_start[0].".".$temp_ip_start[1].".".$temp_ip_start[2].".".rand($temp_ip_start[3],$temp_ip_end[3]);
+    
     $file = fopen(__DIR__."/ip_pool.json","r");
     $ip_json =json_decode(fread($file,filesize(__DIR__."/ip_pool.json")),true);
     fclose($file);
+  
     foreach ($ip_json as $value){
         if($value['ip'] == $ip){
             $ip_while_num = $ip_while_num + 1;
             goto while_ip;
         }
     }
+    
     if(!proxmoxlxc_user_add($params,$ip,$params['password'],$vmid)){
         return ['status'=>'error','msg'=>"创建用户分配权限失败"];
     }
+    
     $json_network['server_vmid'] = $vmid;
     $json_network['bridge']=$params['configoptions']['net_name'];
     $json_network['ip'] = $ip;
     $json_network['mask'] = $params['configoptions']['Mask'];
     $json_network['gateway'] = $params['configoptions']['gateway'];
     $json_network['rate']=$params['configoptions_upgrade']['network'];
+    
     $ip_json[$ip] = $json_network;
+    
     $file = fopen(__DIR__."/ip_pool.json","w");
     fwrite($file,json_encode($ip_json));
     fclose($file);
+    
     $network['name']='eth0';
     $network['bridge']=$params['configoptions']['net_name'];
     $network['gw']=$params['configoptions']['gateway'];
@@ -529,32 +512,40 @@ function proxmoxlxc_CreateAccount($params){
     }elseif($params['configoptions']['swap'] == '1024'){
         $data['swap'] = '1024';
     }
+    
     $info = json_decode(proxmoxlxc_request($params,"/api2/extjs/nodes/".$params['server_host']."/lxc",$data,"POST"),true);
+    
     if($info['success']){
         if($params['configoptions']['nat']=="nat"){
             $post['comment'] = $params['domain']."的远程端口";
             $post['type']='tcp+udp';
             $post['lan_port'] = "22";
             $post['lan_addr'] = $ip;
+            
             $port_info = proxmoxlxc_nat_add($params,$post);
+            
             if($port_info['ErrMsg']!="Success"){
                 active_logs("创建端口映射时出现错误:".json_encode($port_info),$params['uid'],2);
                 return ['status'=>'error','msg'=>json_encode($port_info)];
             }
             $update['port'] =$port_info['wan_port'];
         }
+        
         $update['dedicatedip'] =$ip;
         $update['domain']=$data['vmid'];
         Db::name('host')->where('id', $params['hostid'])->update($update);
+        
         return ['status'=>'success'];
     }else{
         return ['status'=>'error','msg'=>json_encode($info).json_encode($params).json_encode($data['ostemplate'])];
     }
 }
+
 function proxmoxlxc_TerminateAccount ($params){
     if(!proxmoxlxc_user_del($params)){
         active_logs($params['dedicatedip']."@pve用户删除失败",$params['uid'],2);
     }
+    
     $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."?purge=1&destroy-unreferenced-disks=1&force=1","","DELETE"),true);
     if($info['data']==null || $info == null){
         return ['status'=>'error','msg'=>"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."purge=1&destroy-unreferenced-disks=1&force=1"];
@@ -562,12 +553,16 @@ function proxmoxlxc_TerminateAccount ($params){
         $file = fopen(__DIR__."/ip_pool.json","r");
         $ip_json =json_decode(fread($file,filesize(__DIR__."/ip_pool.json")),true);
         fclose($file);
+        
         unset($ip_json[$params['dedicatedip']]);
+        
         $file = fopen(__DIR__."/ip_pool.json","w");
         fwrite($file,json_encode($ip_json));
         fclose($file);
+        
         if($params['configoptions']['nat']=="nat"){
             $nat_list = proxmoxlxc_nat_get_list($params);
+            
             if($nat_list['ErrMsg']=='Success'){
                 foreach($nat_list['Data']['data'] as $key=>$value){
                     $port['id'] = $value['id'];
@@ -581,6 +576,7 @@ function proxmoxlxc_TerminateAccount ($params){
         return ['status'=>'success'];
     }
 }
+
 function proxmoxlxc_On($params){
     $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/status/start",$data,"POST"),true);
     if($info['data']==null || $info == null){
@@ -597,6 +593,7 @@ function proxmoxlxc_Off($params){
         return ['status'=>'success'];
     }
 }
+
 function proxmoxlxc_Reboot($params){
     $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/status/reboot",$data,"POST"),true);
     if($info['data']==null || $info == null){
@@ -605,6 +602,7 @@ function proxmoxlxc_Reboot($params){
         return ['status'=>'success'];
     }
 }
+
 function proxmoxlxc_HardOff ($params){
      $info = json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/status/stop",$data,"POST"),true);
     if($info['data']==null || $info == null){
@@ -613,11 +611,13 @@ function proxmoxlxc_HardOff ($params){
         return ['status'=>'success'];
     }
 }
+
 function proxmoxlxc_SuspendAccount ($params){
     proxmoxlxc_HardOff($params);
 }
 function proxmoxlxc_UnsuspendAccount($params){
 }
+
 function proxmoxlxc_Getcurrent($params){
     $post = input('post.');
     if(!proxmoxlxc_Pvestatus($params)){
@@ -625,11 +625,14 @@ function proxmoxlxc_Getcurrent($params){
     }
     return proxmoxlxc_GET_lxc_info($params);
 }
+
 function proxmoxlxc_nextid($params) {
     $vmid_file_path = __DIR__ . "/vmid.json";
     $product_unique_value = $params['configoptions']['product_unique_value'];
     $start_vmid = (int)$params['configoptions']['vmid_start'];
+
     $vmid_data = [];
+
     if (file_exists($vmid_file_path)) {
         $vmid_file = fopen($vmid_file_path, "r+");
         if (flock($vmid_file, LOCK_EX)) {
@@ -640,6 +643,7 @@ function proxmoxlxc_nextid($params) {
                     $vmid_data = [];
                 }
             }
+
             if (isset($vmid_data[$product_unique_value])) {
                 $current_vmid = (int)$vmid_data[$product_unique_value]['data'];
                 $vmid_data[$product_unique_value]['data'] = $current_vmid + 1;
@@ -655,6 +659,7 @@ function proxmoxlxc_nextid($params) {
         }
         fclose($vmid_file);
     }
+
     $vmid_data[$product_unique_value] = ['data' => $start_vmid];
     if (file_exists($vmid_file_path)) {
         $existing_data = json_decode(file_get_contents($vmid_file_path), true);
@@ -662,6 +667,7 @@ function proxmoxlxc_nextid($params) {
             $vmid_data = array_merge($existing_data, $vmid_data);
         }
     }
+
     $vmid_file = fopen($vmid_file_path, "w");
     if (flock($vmid_file, LOCK_EX)) {
         fwrite($vmid_file, json_encode($vmid_data, JSON_PRETTY_PRINT));
@@ -671,11 +677,14 @@ function proxmoxlxc_nextid($params) {
     fclose($vmid_file);
     return $start_vmid;
 }
+
 function proxmoxlxc_delete_id($params) {
 }
+
 function proxmoxlxc_Pvestatus($params){
     return 1;
 }
+
 function proxmoxlxc_status($params){
     $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/status/current"),true);
     $result['status'] = 'success';
@@ -691,25 +700,29 @@ function proxmoxlxc_status($params){
     }
     return $result;
 }
+
 function proxmoxlxc_GET_lxc_info($params){
     $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/status/current"),true);
     return $request;
 }
+
 function proxmoxlxc_GET_lxc_config($params){
     $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/config"),true);
+    
     if($request['data']==null||$request==null){
         return false;
     }
+    
     $temp_net_info = explode(",",$request['data']['net0']);
     foreach ($temp_net_info as $value){
         $temp = explode("=",$value);
         $temp_ini[$temp[0]]=$temp[1]; 
     }
     $request['data']['net0'] = $temp_ini;
-    $temp_disk_info = explode(",",$request['data']['rootfs']);
     $request['data']['rootfs'] =  explode(",",$request['data']['rootfs']);;
     return $request;
 }
+
 function proxmoxlxc_GET_lxc_snapshot_list($params){
     $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/snapshot/"),true);
     $temp = [];
@@ -723,43 +736,56 @@ function proxmoxlxc_GET_lxc_snapshot_list($params){
     }
     return $temp;
 }
+
 function proxmoxlxc_delete_snapshot($params){
     $post = input('post.');
     $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/snapshot/".$post['name'],"","DELETE"),true);
+    
     if($request['data']==null||$request==null){
         return false;
     }
     return ['status'=>'200','msg'=>'快照删除成功'];
 }
+
 function proxmoxlxc_RollBACK_snapshot($params){
     $post = input('post.');
     $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/snapshot/".$post['name']."/rollback","","POST"),true);
+    
     if($request['data']==null||$request==null){
         return false;
     }
     return ['status'=>'200','msg'=>'回滚成功'];
 }
+
 function proxmoxlxc_create_snapshot($params){
     $post = input('post.');
+    
     if (!isset($post['name']) || !preg_match('/^[a-zA-Z][a-zA-Z0-9_]{1,}$/', $post['name'])) {
         return ['ErrMsg' => 'IllegalFormat'];
     }
+
     if (!isset($post['description']) || strlen($post['description']) > 100) {
         return ['ErrMsg' => 'IllegalFormat'];
     }
+    
     $data['snapname'] = $post['name'];
     $data['description'] = $post['description'];
+    
     $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/lxc/".$params['domain']."/snapshot/",$data,"POST"),true);
+    
     if($request['data']==null||$request==null){
         return false;
     }
     return ['status'=>'200','msg'=>'创建成功'];
 }
+
 function proxmoxlxc_tasks_get_list($params){
     $request =  json_decode(proxmoxlxc_request($params,"/api2/json/nodes/".$params['server_host']."/tasks?vmid=".$params['domain']."&start=0&limit=10"),true);
+    
     if($request['data']==null||$request==null){
         return false;
     }
+    
     $temp = [];
     foreach ($request['data'] as $value){
         $value['starttime'] = date('Y-m-d H:i:s',$value['starttime']);
@@ -768,8 +794,10 @@ function proxmoxlxc_tasks_get_list($params){
     }
     return $temp;
 }
+
 function proxmoxlxc_nat_get_list($params){
     $url = $params['configoptions']['ikuai_url']."/Action/call";
+    
     $data['func_name'] = "dnat";
     $data['action'] = "show";
     $data['param'] = [
@@ -778,36 +806,47 @@ function proxmoxlxc_nat_get_list($params){
      "FINDS"=>"lan_addr,lan_port,wan_port,comment",
      "KEYWORDS"=> $params['dedicatedip']
      ];
+     
      $info = json_decode(proxmoxlxc_nat_request($params,$url,$data),true);
      return $info;
 }
+
 function proxmoxlxc_nat_add($params, $post = "") {
     if ($post == "") {
         $post = input('post.');
         $post['lan_addr'] = $params['dedicatedip'];
     }
+
     $nat_list = proxmoxlxc_nat_get_list($params);
     $nat_limit_error = ['ErrMsg' => 'ReachLimit'];
+
     if ($nat_list['Data']['total'] == $params['configoptions_upgrade']['nat_limit']) {
         return $nat_limit_error;
     }
+
     $min_port = (int)$params['configoptions']['port_pool_start'];
     $max_port = (int)$params['configoptions']['port_pool_end'];
+
     if (!empty($post['wan_port']) && ($post['wan_port'] < $min_port || $post['wan_port'] > $max_port)) {
         return ['ErrMsg' => 'IllegalPort'];
     }
+
     $port_while_num_max = 100;
     $port_while_num = 0;
+    
     $port_pool_file_path = __DIR__ . "/port_pool.json";
+
     while (true) {
         if ($port_while_num >= $port_while_num_max) {
             return ['ErrMsg' => 'PortUnavailable'];
         }
+
         if (empty($post['wan_port'])) {
             $port = rand($min_port, $max_port);
         } else {
             $port = $post['wan_port'];
         }
+
         if (file_exists($port_pool_file_path)) {
             $port_pool_file = fopen($port_pool_file_path, "r");
             $port_pool_file_json = json_decode(fread($port_pool_file, filesize($port_pool_file_path)), true);
@@ -815,21 +854,26 @@ function proxmoxlxc_nat_add($params, $post = "") {
         } else {
             $port_pool_file_json = [];
         }
+
         $port_taken = false;
+
         foreach ($port_pool_file_json as $key => $value) {
             if ($key == $port) {
                 $port_taken = true;
                 break;
             }
         }
+
         if (!$port_taken) {
                 $port_pool_file_json[$port] = [
                     'server_vmid' => $params['domain'],
                     'server_ip' => $params['dedicatedip']
                 ];
+                
                 $port_pool_file = fopen($port_pool_file_path, "w");
                 fwrite($port_pool_file, json_encode($port_pool_file_json, JSON_PRETTY_PRINT));
                 fclose($port_pool_file);
+
             $url = $params['configoptions']['ikuai_url'] . "/Action/call";
             $data['func_name'] = "dnat";
             $data['action'] = "add";
@@ -843,32 +887,41 @@ function proxmoxlxc_nat_add($params, $post = "") {
                 "lan_port" => $post['lan_port'],
                 "src_addr" => ""
             ];
+
             $info = json_decode(proxmoxlxc_nat_request($params, $url, $data), true);
             $info['wan_port'] = $port;
+
             active_logs("执行创建映射函数返回结果: " . json_encode($info) . " | 端口池：" . json_encode($port_pool), $params['uid'], 2);
             return $info;
         } elseif (!empty($post['wan_port'])) {
             return ['ErrMsg' => 'PortCantBeUse'];
         }
+
         $port_while_num++;
     }
 }
+
 function proxmoxlxc_nat_del($params, $post = "") {
     if ($post == "") {
         $post = input('post.');
     }
+
     $url = $params['configoptions']['ikuai_url'] . "/Action/call";
     $data['func_name'] = "dnat";
     $data['action'] = "del";
     $data['param'] = [
         "id" => $post['id'],
     ];
+
     $info = json_decode(proxmoxlxc_nat_request($params, $url, $data), true);
+
     if ($info['ErrMsg'] == 'Success') {
         $port_pool_file_path = __DIR__ . "/port_pool.json";
+
         if (file_exists($port_pool_file_path)) {
             $port_pool_file_content = file_get_contents($port_pool_file_path);
             $port_pool_file_json = json_decode($port_pool_file_content, true);
+
             $wan_port = $post['wan_port'] ?? null;
             if ($wan_port && array_key_exists($wan_port, $port_pool_file_json)) {
                 unset($port_pool_file_json[$wan_port]);
@@ -888,67 +941,84 @@ function proxmoxlxc_nat_del($params, $post = "") {
     } else {
         active_logs("删除映射 API 返回失败: " . json_encode($info), $params['uid'], 2);
     }
+
     active_logs("执行删除映射函数返回结果:" . json_encode($info), $params['uid'], 2);
     return $info;
 }
+
 function proxmoxlxc_nat_request($params,$url,$data){
     $cookie_file = dirname(__FILE__).'/cookie/ikuai_'.$params['server_ip'].'.cookie';
     $login_url = $params['configoptions']['ikuai_url']."/Action/login";
+    
     $post_data['username'] = $params['configoptions']['ikuai_username'];
     $post_data['passwd']= md5($params['configoptions']['ikuai_password']);
     $post_data['pass'] = md5("salt_11".$params['configoptions']['ikuai_password']);
     $post_data['remember_password'] = true;
+    
     $ch = curl_init($login_url);
 	curl_setopt($ch, CURLOPT_HEADER, 0);
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 	curl_setopt($ch, CURLOPT_COOKIEJAR,  $cookie_file);
 	curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($post_data));
-	 curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,FALSE);
-        curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,FALSE);
+	curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,FALSE);
+    curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,FALSE);
 	curl_exec($ch);
 	curl_close($ch);
+    
     $cookie_file = dirname(__FILE__).'/cookie/ikuai_'.$params['server_ip'].'.cookie';
+    
     $ch = curl_init($url);
-    	curl_setopt($ch, CURLOPT_HEADER, 0);
-    	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    	curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie_file);
-    	curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-    	 curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,FALSE);
-        curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,FALSE);
-    	$response = curl_exec($ch);
-    	curl_close($ch);
-    	return $response;
+	curl_setopt($ch, CURLOPT_HEADER, 0);
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+	curl_setopt($ch, CURLOPT_COOKIEFILE, $cookie_file);
+	curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+	curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,FALSE);
+    curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,FALSE);
+	$response = curl_exec($ch);
+	curl_close($ch);
+	return $response;
 }
+
 function proxmoxlxc_user_add($params,$username,$password,$vmid){
     $data['userid'] = $username."@pve";
     $data['password'] = $password;
     $data['comment'] = "用户:".$params['user_info']['username']."|".$params['user_info']['id']."的VNC账号,服务器编号:".$vmid;
+    
     $request =  json_decode(proxmoxlxc_request($params,"/api2/extjs/access/users",$data,"POST"),true);
+    
     if($request==null){
         return FALSE;
     }
+    
     if($request['success']){
         $qx['path'] = "%2Fvms%2F".$vmid;
         $qx['users']= $data['userid'];
         $qx['roles'] = "PVEVMUser";
+        
         $request1 =  json_decode(proxmoxlxc_request($params,"/api2/extjs/access/acl",$qx,"PUT"),true);
         return $request1;
     }
 }
+
 function proxmoxlxc_user_del($params){
     $request =  json_decode(proxmoxlxc_request($params,"/api2/extjs/access/users/".$params['dedicatedip']."@pve","","DELETE"),true);
+    
     if($request==null){
         return FALSE;
     }
+    
     if($request['success']){
         return true;
     }
 }
+
 function proxmoxlxc_user_ban(){
     proxmoxlxc_HardOff($params);
 }
+
 function proxmoxlxc_user_unban(){
 }
+
 function proxmoxlxc_get_ticket($params){
     $curl = curl_init();
     $url = $params['server_http_prefix']."://".$params['server_ip'].":".$params['port']."/api2/extjs/access/ticket";
@@ -957,9 +1027,12 @@ function proxmoxlxc_get_ticket($params){
     curl_setopt($curl,CURLOPT_SSL_VERIFYPEER,FALSE);
     curl_setopt($curl,CURLOPT_SSL_VERIFYHOST,FALSE);
     curl_setopt($curl, CURLOPT_RETURNTRANSFER,1);
+    
     $response = curl_exec($curl);
     $err = curl_error($curl);
+    
     curl_close($curl);
+    
     if ($err) {
       return FALSE;
     } else {
@@ -971,6 +1044,7 @@ function proxmoxlxc_get_ticket($params){
         }
     }
 }
+
 function proxmoxlxc_vnc_if($params){
     $curl = curl_init();
     $url = $params['server_http_prefix']."://".$params['server_ip'].":".$params['port']."/novnc/mgnovnc.html";
@@ -980,7 +1054,9 @@ function proxmoxlxc_vnc_if($params){
     curl_setopt($curl, CURLOPT_RETURNTRANSFER,1);
     $response = strval(curl_exec($curl));
     $err = curl_error($curl);
+    
     curl_close($curl);
+    
     if ($err) {
       return FALSE;
     } else {
@@ -991,20 +1067,21 @@ function proxmoxlxc_vnc_if($params){
         }
     }
 }
+
 function proxmoxlxc_request($params,$url,$data="",$method='GET'){
         $url = $params['server_http_prefix']."://".$params['server_ip'].":".$params['port'].$url;
         if($data!=""){
-            if($data['no']){
+            if(isset($data['no'])){
                 unset($data['no']);
                 $body = json_encode($data);
             }else{
-            foreach ($data as $key=>$val) {
-                if($body == ""){
-                    $body = $key."%3D".$val;
-                }else{
-                    $body = $body."%2C".$key."%3D".$val;
+                foreach ($data as $key=>$val) {
+                    if($body == ""){
+                        $body = $key."=".$val."&";
+                    }else{
+                        $body = $body.$key."=".$val."&";
+                    }
                 }
-            }
             }
         }
         $ch = curl_init();
@@ -1019,10 +1096,12 @@ function proxmoxlxc_request($params,$url,$data="",$method='GET'){
         $err = curl_error($ch);
         curl_close($ch);
         $r = mb_convert_encoding($document, 'UTF-8','GBK');
+        
         if ($err) {
           return "errorCurl:".$err;
         } else {
           return $r;
         }
     }
+
 ?>
