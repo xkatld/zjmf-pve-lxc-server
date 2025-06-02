@@ -577,7 +577,6 @@ async def get_task_status(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取任务状态失败: {str(e)}")
 
-
 @router.post(
     "/nat/rules/resync",
     response_model=schemas.OperationResponse,
@@ -839,6 +838,39 @@ async def delete_specific_nat_rule(
         )
         raise HTTPException(status_code=500, detail=f"删除NAT规则时发生内部错误: {str(e)}")
 
+@router.post("/containers/{node}/{vmid}/request-console-token",
+             response_model=schemas.OperationResponse,
+             summary="Fordert ein temporäres Token für die Web-Konsole an",
+             tags=["容器操作"])
+async def request_console_token(
+    node: str,
+    vmid: str,
+    request: Request,
+    _: bool = Depends(verify_api_key),
+    db: Session = Depends(get_db)
+):
+    request_id = request_task_id_cv.get()
+    try:
+        client_user_id = request.client.host
+        console_token = proxmox_service.generate_console_session_token(node, vmid, client_user_id)
+
+        log_operation(
+            db, "Anfrage Konsolentoken", vmid, node, "Erfolg",
+            "Temporärer Konsolentoken erfolgreich erstellt.",
+            request.client.host, task_id=request_id
+        )
+        return schemas.OperationResponse(
+            success=True,
+            message="Temporärer Konsolentoken erfolgreich erstellt.",
+            data={"token": console_token}
+        )
+    except Exception as e:
+        log_operation(
+            db, "Anfrage Konsolentoken", vmid, node, "Fehler",
+            str(e), request.client.host, task_id=request_id
+        )
+        raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen des Konsolentokens: {str(e)}")
+
 @router.websocket("/containers/{node}/{vmid}/ws-terminal")
 async def websocket_terminal(
     websocket: WebSocket,
@@ -857,6 +889,9 @@ async def websocket_terminal(
     process = None
     shell_command = f"pct enter {vmid}"
     is_windows = os.name == 'nt'
+    stdout_task = None
+    stderr_task = None
+    stdin_task = None
 
     try:
         log_operation(
@@ -898,29 +933,30 @@ async def websocket_terminal(
                     await ws.send_bytes(data)
             except asyncio.CancelledError:
                 pass
-            except Exception as e_ws_fwd:
+            except Exception:
                 try:
-                    await ws.send_text(f"\r\nError reading from container: {str(e_ws_fwd)}\r\n")
+                    if ws.client_state != WebSocketDisconnect:
+                        await ws.send_text(f"\r\nError reading from container stream.\r\n")
                 except Exception:
                     pass
             finally:
-                if not ws.client_state == WebSocketDisconnect:
+                if ws.client_state != WebSocketDisconnect:
                      pass
 
-        async def forward_to_container(pipe, ws):
+        async def forward_to_container(pipe_stdin, ws):
             try:
                 while True:
                     message = await ws.receive()
                     if message["type"] == "websocket.receive":
                         data_to_send = message.get("bytes") or message.get("text","").encode()
                         if data_to_send:
-                            pipe.write(data_to_send)
-                            await pipe.drain()
+                            pipe_stdin.write(data_to_send)
+                            await pipe_stdin.drain()
                     elif message["type"] == "websocket.disconnect":
                         break
             except asyncio.CancelledError:
                 pass
-            except Exception as e_container_fwd:
+            except Exception:
                  pass
             finally:
                 pass
@@ -930,12 +966,16 @@ async def websocket_terminal(
         stdin_task = asyncio.create_task(forward_to_container(process.stdin, websocket))
 
         done, pending = await asyncio.wait(
-            [stdout_task, stderr_task, stdin_task],
+            [stdout_task, stderr_task, stdin_task, process.wait()],
             return_when=asyncio.FIRST_COMPLETED,
         )
 
         for task in pending:
             task.cancel()
+        for task in done:
+            if task.exception():
+                pass
+
 
     except WebSocketDisconnect:
         log_operation(
@@ -947,10 +987,12 @@ async def websocket_terminal(
         error_msg = f"无法连接到容器 {vmid} shell。请确认Proxmox主机配置和容器状态。"
         log_operation(db, "WebSocket错误", vmid, node, "错误", error_msg, websocket.client.host, task_id=request_id)
         try:
-            await websocket.send_text(f"\r\n{error_msg}\r\n")
+            if websocket.client_state != WebSocketDisconnect:
+                await websocket.send_text(f"\r\n{error_msg}\r\n")
         except Exception:
             pass
-        await websocket.close(code=1011)
+        if websocket.client_state != WebSocketDisconnect:
+            await websocket.close(code=1011)
     except Exception as e:
         error_msg = f"WebSocket 内部错误: {str(e)}"
         log_operation(db, "WebSocket错误", vmid, node, "错误", str(e), websocket.client.host, task_id=request_id)
@@ -965,11 +1007,12 @@ async def websocket_terminal(
         if process and process.returncode is None:
             try:
                 process.terminate()
-                await asyncio.wait_for(process.wait(), timeout=5.0)
+                await asyncio.wait_for(process.wait(), timeout=2.0)
             except asyncio.TimeoutError:
-                process.kill()
+                if process.returncode is None: process.kill()
             except Exception:
-                pass
+                 if process.returncode is None: process.kill()
+
         if stdout_task and not stdout_task.done(): stdout_task.cancel()
         if stderr_task and not stderr_task.done(): stderr_task.cancel()
         if stdin_task and not stdin_task.done(): stdin_task.cancel()
