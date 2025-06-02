@@ -598,46 +598,26 @@ function proxmoxlxc_Vnc($params) {
         $pve_public_port = $params['server_port'] ?? 8006; 
 
         $protocol = (!empty($params['server_secure']) && $params['server_secure'] !== 'off') ? 'https' : 'http';
-        // Attempt to use the scheme from the API URL if it's set for the PVE host.
-        $api_url_parts = parse_url($api_details['base_url']);
-         if (isset($api_url_parts['scheme'])) {
-            $pve_console_protocol = $api_url_parts['scheme'];
-        } else {
-            $pve_console_protocol = $protocol; // Fallback to server_secure based protocol
-        }
 
-        $ticket_encoded = urlencode($console_data['ticket']);
-        $vnc_url = "{$pve_console_protocol}://{$pve_host}:{$pve_public_port}/?console=lxc&novnc=1&vmid={$vmid}&node={$api_details['node']}&resize=scale&path=api2/json/nodes/{$api_details['node']}/lxc/{$vmid}/vncwebsocket/port/{$console_data['port']}/vncticket/{$ticket_encoded}";
+        $encoded_ticket_for_ws_param = rawurlencode($console_data['ticket']);
+
+        $path_node = rawurlencode($api_details['node']);
+        $path_vmid = rawurlencode($vmid);
+
+        $ws_target_path_and_query = "api2/json/nodes/{$path_node}/lxc/{$path_vmid}/vncwebsocket?port={$console_data['port']}&vncticket={$encoded_ticket_for_ws_param}";
+
+        $main_url_path_parameter_value = rawurlencode($ws_target_path_and_query);
+
+        $main_url_vmid = rawurlencode($vmid);
+        $main_url_node = rawurlencode($api_details['node']);
+        
+        $vnc_url = "{$protocol}://{$pve_host}:{$pve_public_port}/?console=lxc&novnc=1&vmid={$main_url_vmid}&node={$main_url_node}&resize=scale&path={$main_url_path_parameter_value}";
+        
         return ['status' => 'success', 'url' => $vnc_url];
     }
     return ['status' => 'error', 'msg' => $response['message'] ?? $response['msg'] ?? '获取VNC控制台失败'];
 }
 
-function proxmoxlxc_Status($params) {
-    $api_details = _proxmoxlxc_get_api_details($params);
-    $vmid = $params['domain'];
-    $response = _proxmoxlxc_call_api($api_details['base_url'], $api_details['api_key'], "containers/{$api_details['node']}/{$vmid}/status", 'GET');
-
-    if (isset($response['vmid'])) { 
-        $status_map = [
-            'running' => ['status' => 'on', 'des' => '运行中'],
-            'stopped' => ['status' => 'off', 'des' => '已关机'],
-        ];
-        $pve_status = strtolower($response['status'] ?? 'unknown');
-        $client_status = $status_map[$pve_status] ?? ['status' => 'unknown', 'des' => '未知 (' . ($response['status'] ?? 'N/A') . ')'];
-        
-        return ['status' => 'success', 'data' => $client_status];
-    }
-    return ['status' => 'error', 'msg' => $response['detail'] ?? $response['message'] ?? $response['msg'] ?? '获取状态失败'];
-}
-
-
-function proxmoxlxc_ClientArea($params) {
-    return [
-        'info' => ['name' => '实例信息'],
-        'nat_rules' => ['name' => 'NAT规则管理']
-    ];
-}
 
 function proxmoxlxc_ClientAreaOutput($params, $key) {
     $api_details = _proxmoxlxc_get_api_details($params);
