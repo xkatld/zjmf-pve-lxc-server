@@ -856,12 +856,12 @@ async def request_console_token(
 
         log_operation(
             db, "Anfrage Konsolentoken", vmid, node, "Erfolg",
-            "Temporärer Konsolentoken erfolgreich erstellt.",
+            "已成功创建临时控制台令牌。",
             request.client.host, task_id=request_id
         )
         return schemas.OperationResponse(
             success=True,
-            message="Temporärer Konsolentoken erfolgreich erstellt.",
+            message="已成功创建临时控制台令牌。",
             data={"token": console_token}
         )
     except Exception as e:
