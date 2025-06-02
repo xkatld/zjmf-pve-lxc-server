@@ -1,0 +1,188 @@
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">网页控制台</h6>
+    </div>
+    <div class="card-body">
+        <button id="connectConsoleBtn" class="btn btn-primary">连接控制台</button>
+        <div id="terminal" style="width:100%; height:450px; background-color:#000; margin-top:15px; display:none;"></div>
+    </div>
+</div>
+
+<link rel="stylesheet" href="{$MODULE_PATH}/templates/xterm/xterm.min.css" />
+<script src="{$MODULE_PATH}/templates/xterm/xterm.min.js"></script>
+<script src="{$MODULE_PATH}/templates/xterm/xterm-addon-fit.min.js"></script>
+<script src="{$MODULE_PATH}/templates/xterm/xterm-addon-attach.min.js"></script>
+
+<script type="text/javascript">
+    var term, ws, fitAddon;
+    // Corrected WebSocket URL based on backend API
+    var baseApiUrl = "{$params.configoptions.api_url}".replace(/^http/, 'ws');
+    var consoleWsUrl = baseApiUrl + "/api/v1/proxmox/lxc/{$node}/{$vmid}/console_ws";
+
+
+    function requestConsoleTokenAndConnect() {
+        showLoading('正在请求控制台访问...');
+        var body = {"func": "RequestConsoleToken"};
+        $.post("{$MODULE_CUSTOM_API}", body, function(response) { // Changed 'data' to 'response'
+            hideLoading();
+            // PHP returns {'status':'success', 'data': {'token': 'TOKEN_VALUE'}}
+            if (response && response.status === 'success' && response.data && response.data.token) {
+                connectWebSocket(response.data.token);
+            } else {
+                Swal.fire('失败', '获取控制台令牌失败: ' + (response.msg || '未知错误'), 'error');
+                 $('#connectConsoleBtn').text('连接失败,重试').show();
+            }
+        }).fail(function() {
+            hideLoading();
+            Swal.fire('失败', '请求控制台令牌失败。', 'error');
+            $('#connectConsoleBtn').text('连接失败,重试').show();
+        });
+    }
+
+    function connectWebSocket(token) {
+        $('#connectConsoleBtn').hide();
+        $('#terminal').show();
+
+        if (term) {
+            term.dispose();
+        }
+        if (ws && ws.readyState !== WebSocket.CLOSED) {
+            ws.close();
+        }
+
+        term = new Terminal({
+            cursorBlink: true,
+            rows: 24, // Default, fitAddon will adjust
+            cols: 80,  // Default
+            theme: {
+                background: '#000000',
+                foreground: '#ffffff',
+                cursor: 'rgba(255,255,255,0.5)'
+            },
+            convertEol: true // Important for proper line endings
+        });
+        fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        term.open(document.getElementById('terminal'));
+        
+        try {
+            fitAddon.fit(); // Initial fit
+        } catch (e) {
+            console.error("Fit addon error on initial fit:", e);
+        }
+
+
+        var finalWsUrl = consoleWsUrl + "?token=" + encodeURIComponent(token);
+        ws = new WebSocket(finalWsUrl);
+
+        var attachAddon = new AttachAddon.AttachAddon(ws);
+        term.loadAddon(attachAddon); // This handles data transfer
+
+        ws.onopen = function() {
+            console.log("WebSocket连接已打开");
+             try {
+                fitAddon.fit(); // Fit again once connected and terminal is fully visible
+            } catch (e) {
+                console.error("Fit addon error on open:", e);
+            }
+            term.focus();
+        };
+        ws.onclose = function(event) {
+            console.log("WebSocket连接已关闭: ", event);
+            if (!event.wasClean) {
+                 term.write("\r\n\x1b[31m连接意外断开 (代码: " + event.code + (event.reason ? ", 原因: " + escapeHtml(event.reason) : "") + ").\x1b[0m\r\n");
+            } else {
+                term.write("\r\n\x1b[33m连接已关闭.\x1b[0m\r\n");
+            }
+            term.write("\x1b[32m请点击上方按钮重新连接.\x1b[0m\r\n");
+            $('#connectConsoleBtn').text('重新连接控制台').show();
+        };
+        ws.onerror = function(error) {
+            console.error("WebSocket错误: ", error);
+            term.write("\r\n\x1b[31mWebSocket连接发生错误.\x1b[0m\r\n");
+             $('#connectConsoleBtn').text('连接错误,重试').show();
+        };
+        
+        // Ensure terminal resizes correctly
+        $(window).off('resize.consolexterm').on('resize.consolexterm', function() {
+            if (fitAddon && term && term.element) { // Check if terminal is still alive
+                 try {
+                    fitAddon.fit();
+                } catch (e) {
+                    console.error("Fit addon error on resize:", e);
+                }
+            }
+        });
+         // Also listen to tab visibility change as it might affect dimensions
+        $(document).off('visibilitychange.consolexterm').on('visibilitychange.consolexterm', function() {
+            if (document.visibilityState === 'visible' && fitAddon && term && term.element) {
+                 try {
+                    fitAddon.fit();
+                } catch (e) {
+                    console.error("Fit addon error on visibility change:", e);
+                }
+            }
+        });
+    }
+    
+    function escapeHtml(unsafe) {
+        if (unsafe === null || typeof unsafe === 'undefined') {
+            return '';
+        }
+        return unsafe
+             .toString()
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;")
+             .replace(/"/g, "&quot;")
+             .replace(/'/g, "&#039;");
+    }
+
+
+    $('#connectConsoleBtn').on('click', function() {
+        requestConsoleTokenAndConnect();
+    });
+    
+    function showLoading(title) {
+        Swal.fire({
+            title: title,
+            html: '请稍候...',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+    }
+
+    function hideLoading() {
+        Swal.close();
+    }
+
+    // Cleanup WebSocket on page unload or before navigating away if in SPA context
+    $(window).on('beforeunload', function() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.close();
+        }
+        if(term){
+            term.dispose();
+        }
+    });
+    
+    // When the tab holding this page becomes active, try to fit the terminal
+    // This handles cases where the tab was opened in the background or restored
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof TabHelper !== 'undefined') { // Assuming TabHelper is a global object from your theme/framework
+            TabHelper.onShow(function(tabId) { // Replace with actual event from your TabHelper
+                if (tabId === getCurrentTabId() && fitAddon && term && term.element) { // Replace getCurrentTabId()
+                     try {
+                         fitAddon.fit();
+                     } catch (e) {
+                         console.error("Fit addon error on tab show:", e);
+                     }
+                }
+            });
+        }
+    });
+
+
+</script>
