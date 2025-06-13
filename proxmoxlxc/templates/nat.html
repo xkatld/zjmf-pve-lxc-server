@@ -1,0 +1,99 @@
+<div class="row">
+  <div class="col-xl-9 col-xs-12">
+      <div class="card shadow mb-4">
+          <div class="card-header py-3">
+              <h6 class="m-0 font-weight-bold text-primary">映射列表</h6>
+          </div>
+          <div class="card-body mx-table table-responsive">
+              <button type="button" class="btn btn-success sm-text text-uppercase mb-2" data-toggle="modal" data-target="#create_nat">新建映射</button>
+              <table class="table table-hover  t-text-dark--light-15 sm-text">
+                  <thead>
+                      <tr>
+                          <th scope="col">内网端口</th>
+                          <th scope="col">外网端口</th>
+                          <th scope="col">协议</th>
+                          <th scope="col">公网地址</th>
+                          <th scope="col">操作</th>
+                      </tr>
+                  </thead>
+                  <tbody class="t-mt-15">
+                      {foreach $list as $key => $vo}
+                      <tr>
+                          <td>{$vo.sport}</td>
+                          <td>{$vo.dport}</td>
+                          <td>{$vo.dtype}</td>
+                          <td>{$params['configoptions']['display_ip']}:{$vo.dport}</td>
+                          <td>
+                              <button type="button" class="btn btn-warning" onclick="DelNat('{$vo.rule_id}')">删除</button>
+                          </td>
+                      </tr>
+                      {/foreach}
+                  </tbody>
+              </table>
+          </div>
+      </div>
+  </div>
+</div>
+
+<div class.modal fade" id="create_nat" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+      <div class="modal-content">
+          <div class="modal-header">
+              <h4 class="modal-title" id="myModalLabel">创建映射</h4>
+              <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+          </div>
+          <div class="modal-body">
+              <div class="form-group">
+                  <label for="name">内网端口</label>
+                  <input type="number" class="form-control" id="nat_lan_port" placeholder="内网端口号">
+              </div>
+              <div class="form-group">
+                  <label for="name">外网端口</label>
+                  <input type="number" class="form-control" id="nat_wan_port" placeholder="留空自动分配, 范围:{$min_port}-{$max_port}">
+              </div>
+              <div class="form-group">
+                  <label for="name">使用协议</label>
+                  <select class="form-control" id="nat_type">
+                      <option value="tcp">TCP</option>
+                      <option value="udp">UDP</option>
+                  </select>
+              </div>
+          </div>
+          <div class="modal-footer">
+              <button type="button" class="btn btn-default" data-dismiss="modal">关闭</button>
+              <button type="button" class="btn btn-primary" onclick="CreateNat()">创建</button>
+          </div>
+      </div>
+  </div>
+</div>
+
+<script type="text/javascript" charset="utf-8">
+  function CreateNat() {
+      var body = {
+          "func": "nat_add",
+          "wan_port": nat_wan_port.value,
+          "lan_port": nat_lan_port.value,
+          "type": nat_type.value
+      }
+      $.post("{$MODULE_CUSTOM_API}", body, function(data, status) {
+          if (data.ErrMsg == "Success") {
+              Swal.fire("成功", data.msg || "创建成功", "success").then(() => location.reload());
+          } else if (data.ErrMsg == "IllegalPort") {
+              Swal.fire("失败", "端口需要介于{$min_port}与{$max_port}之间", "error");
+          } else {
+              Swal.fire("失败", data.ErrMsg || "创建映射失败", "error");
+          }
+      });
+  }
+
+  function DelNat(id) {
+      var body = { "func": "nat_del", "id": id };
+      $.post("{$MODULE_CUSTOM_API}", body, function(data, status) {
+          if (data.ErrMsg == "Success") {
+              Swal.fire("成功", data.msg || "删除成功", "success").then(() => location.reload());
+          } else {
+              Swal.fire("失败", data.ErrMsg || "删除映射失败", "error");
+          }
+      });
+  }
+</script>
