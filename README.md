@@ -1,3 +1,8 @@
-# ProxmoxVE-LXC 对接模块
-
-本项目是一个用于对接 Proxmox VE (PVE) LXC 容器的模块，旨在通过智简魔方 (IDCSystem) 管理平台简化 LXC 容器的创建、管理和监控。
+简单命令
+~~~
+apt update -y
+apt install wget curl sudo git screen nano unzip iptables-persistent iptables -y
+apt install python3-pip python3 -y
+rm /usr/lib/python3.11/EXTERNALLY-MANAGED
+pip3 install -r requirements.txt
+~~~
