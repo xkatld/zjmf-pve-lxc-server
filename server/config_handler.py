@@ -18,17 +18,19 @@ class AppConfig:
 
         self.pve_host = parser.get('pve', 'HOST', fallback='127.0.0.1')
         self.pve_user = parser.get('pve', 'USER', fallback='root@pam')
-        self.pve_token_id = parser.get('pve', 'TOKEN_ID', fallback=None)
-        self.pve_token_secret = parser.get('pve', 'TOKEN_SECRET', fallback=None)
+        self.pve_password = parser.get('pve', 'PASSWORD', fallback=None)
         self.pve_node = parser.get('pve', 'NODE', fallback=None)
         self.network_bridge = parser.get('pve', 'NETWORK_BRIDGE', fallback='vmbr0')
         self.storage_pool = parser.get('pve', 'STORAGE_POOL', fallback='local-lvm')
         self.main_interface = parser.get('pve', 'MAIN_INTERFACE', fallback=None)
         self.nat_listen_ip = parser.get('pve', 'NAT_LISTEN_IP', fallback=None)
+        
+        if not self.pve_password:
+            raise ValueError("配置文件 [pve] 中必须提供 PASSWORD")
 
-        if not all([self.pve_token_id, self.pve_token_secret, self.pve_node]):
-            raise ValueError("PVE 配置不完整 (TOKEN_ID, TOKEN_SECRET, NODE 是必须的)")
-            
+        if not self.pve_node:
+            raise ValueError("配置文件 [pve] 中必须提供 NODE")
+        
         if not self.nat_listen_ip:
             raise ValueError("配置文件 [pve] 中必须设置 NAT_LISTEN_IP")
         

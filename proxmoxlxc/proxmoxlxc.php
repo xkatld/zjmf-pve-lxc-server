@@ -2,7 +2,7 @@
 use think\Db;
 
 function proxmoxlxc_MetaData(){
-	return ['DisplayName'=>'PVE-LXC对接模块(Python后端)', 'APIVersion'=>'3.1', 'HelpDoc'=>'https://github.com/xkatld/zjmf-lxd-server'];
+	return ['DisplayName'=>'PVE-LXC对接模块(Python后端)', 'APIVersion'=>'3.1', 'HelpDoc'=>'https://github.com/xkatld/zjmf-pve-lxc-server'];
 }
 
 function proxmoxlxc_ConfigOptions(){
@@ -63,44 +63,42 @@ function proxmoxlxc_ConfigOptions(){
 function proxmoxlxc_TestLink($params){
     $res = proxmoxlxc_api_request($params, '/api/check', 'GET');
 
-    if (isset($res['error']) && $res['error'] === true) {
-        return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "无法连接: " . $res['msg']]];
+    if ($res['error']) {
+        return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "连接失败: " . $res['msg']]];
     }
 
     if (isset($res['code'])) {
         if ($res['code'] == 200) {
             return ['status' => 200, 'data' => ['server_status' => 1, 'msg' => "连接成功: " . ($res['msg'] ?? '后端API工作正常')]];
-        } elseif ($res['code'] == 401) {
-            return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "连接失败: API密钥(访问密码)无效或未提供。"]];
-        } else {
-            return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "后端返回错误(Code:{$res['code']}): " . ($res['msg'] ?? '未知错误')]];
         }
+        return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "后端返回错误(Code:{$res['code']}): " . ($res['msg'] ?? '未知错误')]];
     }
 
     return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "收到意外的响应格式: " . json_encode($res, JSON_UNESCAPED_UNICODE)]];
 }
 
 function proxmoxlxc_CreateAccount($params){
-    $ip_pool = explode(",", $params['configoptions']['ip_pool']);
-    $start_ip_suffix = intval(explode(".", $ip_pool[0])[3]);
-    $end_ip_suffix = intval(explode(".", $ip_pool[1])[3]);
-    $ip_prefix = implode(".", array_slice(explode(".", $ip_pool[0]), 0, 3));
+    $ip_pool_parts = explode(",", $params['configoptions']['ip_pool']);
+    $start_ip = ip2long($ip_pool_parts[0]);
+    $end_ip = ip2long($ip_pool_parts[1]);
 
-    $assigned_ip = '';
-    $max_retries = 50;
-    for ($i = 0; $i < $max_retries; $i++) {
-        $random_suffix = rand($start_ip_suffix, $end_ip_suffix);
-        $temp_ip = "{$ip_prefix}.{$random_suffix}";
-        $host = Db::name('host')->where('dedicatedip', $temp_ip)->find();
-        if (!$host) {
-            $assigned_ip = $temp_ip;
-            break;
-        }
+    if (!$start_ip || !$end_ip || $start_ip >= $end_ip) {
+        return ['status' => 'error', 'msg' => 'IP地址池配置无效'];
     }
 
-    if (empty($assigned_ip)) {
+    $all_ips = [];
+    for ($i = $start_ip; $i <= $end_ip; $i++) {
+        $all_ips[] = long2ip($i);
+    }
+    
+    $used_ips = Db::name('host')->where('serverid', $params['serverid'])->column('dedicatedip');
+    $available_ips = array_diff($all_ips, $used_ips);
+
+    if (empty($available_ips)) {
         return ['status' => 'error', 'msg' => 'IP地址池已满，无法分配IP'];
     }
+    
+    $assigned_ip = $available_ips[array_rand($available_ips)];
 
     $payload = [
         'hostname'  => $params['domain'],
@@ -126,9 +124,8 @@ function proxmoxlxc_CreateAccount($params){
             'domain' => $res['data']['vmid']
         ]);
         return ['status'=>'success'];
-    } else {
-        return ['status'=>'error', 'msg'=> "后端错误: " . ($res['msg'] ?? json_encode($res))];
     }
+    return ['status'=>'error', 'msg'=> "后端错误: " . ($res['msg'] ?? json_encode($res))];
 }
 
 function proxmoxlxc_TerminateAccount($params){
@@ -212,17 +209,24 @@ function proxmoxlxc_nat_add($params, $post=""){
     if ($post == "") $post = input('post.');
 
     $port_pool = explode(',', $params['configoptions']['port_pool']);
+    $min_port = (int)($port_pool[0] ?? 40000);
+    $max_port = (int)($port_pool[1] ?? 50000);
     $wan_port = intval($post['wan_port']);
 
     if (empty($wan_port)) {
         $res_list = proxmoxlxc_api_request($params, '/api/nat/list?vmid=' . $params['domain'], 'GET');
         $existing_ports = array_column($res_list['data'] ?? [], 'dport');
-        $wan_port = rand($port_pool[0], $port_pool[1]);
-        while(in_array($wan_port, $existing_ports)){
-            $wan_port = rand($port_pool[0], $port_pool[1]);
+        $retries = 50; 
+        do {
+            $wan_port = rand($min_port, $max_port);
+            $retries--;
+        } while(in_array($wan_port, $existing_ports) && $retries > 0);
+        
+        if ($retries <= 0 && in_array($wan_port, $existing_ports)) {
+            return ['ErrMsg' => '自动分配端口失败，请尝试手动指定。'];
         }
     } else {
-        if ($wan_port < $port_pool[0] || $wan_port > $port_pool[1]) {
+        if ($wan_port < $min_port || $wan_port > $max_port) {
             return ['ErrMsg' => 'IllegalPort'];
         }
     }
@@ -235,10 +239,7 @@ function proxmoxlxc_nat_add($params, $post=""){
         'sport' => intval($post['lan_port'])
     ];
     $res = proxmoxlxc_api_request($params, '/api/nat/add', 'POST', $payload);
-    if ($res && $res['code'] == 200) {
-        return ['ErrMsg' => 'Success', 'msg' => $res['msg']];
-    }
-    return ['ErrMsg' => $res['msg'] ?? 'Failed'];
+    return ($res && $res['code'] == 200) ? ['ErrMsg' => 'Success', 'msg' => $res['msg']] : ['ErrMsg' => $res['msg'] ?? 'Failed'];
 }
 
 function proxmoxlxc_nat_del($params, $post=""){
@@ -257,37 +258,27 @@ function proxmoxlxc_nat_del($params, $post=""){
         return ['ErrMsg' => 'RuleNotFound'];
     }
 
-    $payload = [
-        'vmid' => $params['domain'],
-        'container_ip' => $rule_to_delete['container_ip'],
-        'dtype' => $rule_to_delete['dtype'],
-        'dport' => $rule_to_delete['dport'],
-        'sport' => $rule_to_delete['sport'],
-        'rule_id' => $rule_to_delete['rule_id']
-    ];
-
-    $res = proxmoxlxc_api_request($params, '/api/nat/delete', 'POST', $payload);
-    if ($res && $res['code'] == 200) {
-        return ['ErrMsg' => 'Success', 'msg' => $res['msg']];
-    }
-    return ['ErrMsg' => $res['msg'] ?? 'Failed'];
+    $res = proxmoxlxc_api_request($params, '/api/nat/delete', 'POST', $rule_to_delete);
+    return ($res && $res['code'] == 200) ? ['ErrMsg' => 'Success', 'msg' => $res['msg']] : ['ErrMsg' => $res['msg'] ?? 'Failed'];
 }
 
 function proxmoxlxc_api_request($params, $endpoint, $method = 'GET', $data = []){
     $protocol = !empty($params['secure']) ? 'https' : 'http';
     $port = !empty($params['port']) ? $params['port'] : '8081';
-    $base_url = "{$protocol}://{$params['server_ip']}:{$port}";
 
     if (empty($params['server_ip'])) {
-        return ['error' => true, 'msg' => "服务器IP地址未配置。请检查服务器设置。"];
+        return ['error' => true, 'msg' => "服务器IP地址未配置。"];
+    }
+    if (empty($params['accesshash'])) {
+        return ['error' => true, 'msg' => "访问密码 (API Key) 未配置。"];
     }
 
+    $base_url = "{$protocol}://{$params['server_ip']}:{$port}";
     $url = rtrim($base_url, '/') . '/' . ltrim($endpoint, '/');
-    $token = $params['accesshash'];
-
+    
     $ch = curl_init();
     $headers = [
-        'apikey: ' . $token,
+        'apikey: ' . $params['accesshash'],
         'Content-Type: application/json'
     ];
 
@@ -311,16 +302,17 @@ function proxmoxlxc_api_request($params, $endpoint, $method = 'GET', $data = [])
     curl_close($ch);
 
     if ($curl_errno > 0) {
-        return ['error' => true, 'msg' => "cURL 错误 (代码: {$curl_errno}): " . $curl_error];
+        return ['error' => true, 'msg' => "cURL 请求失败 (代码: {$curl_errno}): " . $curl_error];
     }
     
-    if (empty($response)) {
-        return ['error' => true, 'msg' => "API未返回任何内容。HTTP状态码: {$http_code}。请检查后端服务是否正常运行以及网络连接是否通畅。"];
+    if ($http_code >= 400) {
+        return ['error' => true, 'msg' => "HTTP错误 (状态码: {$http_code})。请检查后端服务是否正常运行。"];
     }
 
     $decoded_response = json_decode($response, true);
     if (json_last_error() !== JSON_ERROR_NONE) {
-        return ['error' => true, 'msg' => "JSON解码错误: " . json_last_error_msg() . ". HTTP状态码: {$http_code}. 原始响应: " . htmlspecialchars($response)];
+        $error_snippet = htmlspecialchars(substr($response, 0, 100));
+        return ['error' => true, 'msg' => "JSON解码错误: " . json_last_error_msg() . "。原始响应 (片段): " . $error_snippet];
     }
 
     return $decoded_response;

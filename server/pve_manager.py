@@ -37,8 +37,7 @@ class PveManager:
             self.proxmox = ProxmoxAPI(
                 app_config.pve_host,
                 user=app_config.pve_user,
-                token_name=app_config.pve_token_id,
-                token_value=app_config.pve_token_secret,
+                password=app_config.pve_password,
                 verify_ssl=False
             )
         except Exception as e:
@@ -143,7 +142,6 @@ class PveManager:
             logger.info(f"开始创建容器 {vmid} ({hostname})")
             self.node.lxc.create(**config)
             
-            # 等待容器启动和网络就绪
             time.sleep(15) 
             
             ssh_port = self.setup_initial_ssh_nat(vmid, params.get('ip'))
@@ -271,17 +269,14 @@ class PveManager:
         
         rule_comment = f'zjmf_pve_nat_{vmid}_{dtype.lower()}_{dport}'
 
-        # Add DNAT rule
         dnat_args = ['iptables', '-t', 'nat', '-A', 'PREROUTING', '-d', app_config.nat_listen_ip, '-p', dtype.lower(), '--dport', str(dport), '-j', 'DNAT', '--to-destination', f"{container_ip}:{sport}", '-m', 'comment', '--comment', rule_comment]
         success, msg = self._run_shell_command(dnat_args)
         if not success:
             return {'code': 500, 'msg': f"添加DNAT规则失败: {msg}"}
         
-        # Add MASQUERADE rule
         masq_args = ['iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s', container_ip, '-o', app_config.main_interface, '-j', 'MASQUERADE', '-m', 'comment', '--comment', f'{rule_comment}_masq']
         success, msg = self._run_shell_command(masq_args)
         if not success:
-            # Rollback DNAT rule
             dnat_del_args = ['iptables', '-t', 'nat', '-D', 'PREROUTING'] + dnat_args[5:]
             self._run_shell_command(dnat_del_args)
             return {'code': 500, 'msg': f"添加MASQUERADE规则失败: {msg}"}
@@ -300,11 +295,9 @@ class PveManager:
             
         rule_comment = rule_id
 
-        # Delete DNAT rule
         dnat_del_args = ['iptables', '-t', 'nat', '-D', 'PREROUTING', '-d', app_config.nat_listen_ip, '-p', dtype.lower(), '--dport', str(dport), '-j', 'DNAT', '--to-destination', f"{container_ip}:{sport}", '-m', 'comment', '--comment', rule_comment]
         self._run_shell_command(dnat_del_args)
 
-        # Delete MASQUERADE rule
         masq_del_args = ['iptables', '-t', 'nat', '-D', 'POSTROUTING', '-s', container_ip, '-o', app_config.main_interface, '-j', 'MASQUERADE', '-m', 'comment', '--comment', f'{rule_comment}_masq']
         self._run_shell_command(masq_del_args)
 

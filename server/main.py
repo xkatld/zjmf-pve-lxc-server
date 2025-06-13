@@ -131,5 +131,13 @@ def api_nat_delete():
     return jsonify(pve.delete_nat_rule(**payload))
 
 if __name__ == '__main__':
+    is_debug_mode = app_config.log_level == 'DEBUG'
+    host = '0.0.0.0'
+    
+    if host == '0.0.0.0' and is_debug_mode:
+        logger.warning("安全警告：禁止在公网(0.0.0.0)上以DEBUG模式运行！")
+        logger.warning("已强制禁用DEBUG模式。生产环境请使用Gunicorn或uWSGI。")
+        is_debug_mode = False
+
     logger.info(f"启动 PVE-LXC 后端服务，监听端口: {app_config.http_port}")
-    app.run(host='0.0.0.0', port=app_config.http_port, debug=(app_config.log_level == 'DEBUG'))
+    app.run(host=host, port=app_config.http_port, debug=is_debug_mode)
