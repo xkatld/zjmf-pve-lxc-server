@@ -2,71 +2,56 @@
 use think\Db;
 
 function proxmoxlxc_MetaData(){
-	return ['DisplayName'=>'PVE-LXC对接模块(Python后端)', 'APIVersion'=>'3.0', 'HelpDoc'=>'https://github.com/xkatld/zjmf-lxd-server'];
+	return ['DisplayName'=>'PVE-LXC对接模块(Python后端)', 'APIVersion'=>'3.1', 'HelpDoc'=>'https://github.com/xkatld/zjmf-lxd-server'];
 }
 
 function proxmoxlxc_ConfigOptions(){
     return [
         [
-            'type'=>'text', 
-            'name'=>'后端API地址', 
-            'description'=>'Python后端服务的地址, 结尾不要带/',
-            'placeholder'=>'http://127.0.0.1:8081',
-            'default'=>"http://127.0.0.1:8081",
-            'key'=>'backend_url'
-        ],
-        [
-            'type'=>'password', 
-            'name'=>'后端API密钥', 
-            'description'=>'与后端app.ini中TOKEN一致',
-            'placeholder'=>'YOUR_STRONG_SECRET_TOKEN',
-            'key'=>'backend_token'
-        ],
-        [
-            'type'=>'text', 
-            'name'=>'IP地址池', 
+            'type'=>'text',
+            'name'=>'IP地址池',
             'description'=>'IPV4地址范围(逗号隔开)',
             'placeholder'=>'172.16.0.2,172.16.0.20',
             'key'=>'ip_pool'
         ],
         [
-            'type'=>'text', 
-            'name'=>'掩码', 
+            'type'=>'text',
+            'name'=>'掩码',
             'description'=>'如: 24',
             'default'=>"24",
             'key'=>'mask'
         ],
         [
-            'type'=>'text', 
-            'name'=>'IP网关', 
+            'type'=>'text',
+            'name'=>'IP网关',
             'description'=>'网关地址',
             'placeholder'=>'172.16.0.1',
             'key'=>'gateway'
         ],
         [
-            'type'=>'text', 
-            'name'=>'DNS服务器', 
+            'type'=>'text',
+            'name'=>'DNS服务器',
             'description'=>'域名解析服务器地址',
             'default'=>"8.8.8.8",
             'key'=>'dns'
         ],
         [
-            'type'=>'text', 
-            'name'=>'映射展示地址', 
+            'type'=>'text',
+            'name'=>'映射展示地址',
             'description'=>'用于客户端显示的公网IP地址',
             'placeholder'=>'your_public_ip',
             'key'=>'display_ip'
         ],
         [
-            'type'=>'text', 
-            'name'=>'端口池范围', 
+            'type'=>'text',
+            'name'=>'端口池范围',
             'description'=>'用于NAT映射的公网端口范围，逗号隔开',
             'placeholder'=>'40000,50000',
             'key'=>'port_pool'
         ],
         [
-            'type'=>'dropdown', 
-            'name'=>'嵌套虚拟化', 
+            'type'=>'dropdown',
+            'name'=>'嵌套虚拟化',
             'description'=>'是否允许在容器内使用Docker等',
             'options'=>['1'=>'开启', '0'=>'关闭'],
             'default'=>"1",
@@ -82,15 +67,17 @@ function proxmoxlxc_TestLink($params){
         return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "无法连接: " . $res['msg']]];
     }
 
-    if ($res && isset($res['code'])) {
+    if (isset($res['code'])) {
         if ($res['code'] == 200) {
-            return ['status' => 200, 'data' => ['server_status' => 1, 'msg' => "后端API连接成功: " . $res['msg']]];
+            return ['status' => 200, 'data' => ['server_status' => 1, 'msg' => "连接成功: " . ($res['msg'] ?? '后端API工作正常')]];
+        } elseif ($res['code'] == 401) {
+            return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "连接失败: API密钥(访问密码)无效或未提供。"]];
         } else {
-            return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "后端API返回错误(Code:{$res['code']}): " . ($res['msg'] ?? '未知错误')]];
+            return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "后端返回错误(Code:{$res['code']}): " . ($res['msg'] ?? '未知错误')]];
         }
     }
 
-    return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "收到意外的响应格式: " . json_encode($res)]];
+    return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "收到意外的响应格式: " . json_encode($res, JSON_UNESCAPED_UNICODE)]];
 }
 
 function proxmoxlxc_CreateAccount($params){
@@ -98,7 +85,7 @@ function proxmoxlxc_CreateAccount($params){
     $start_ip_suffix = intval(explode(".", $ip_pool[0])[3]);
     $end_ip_suffix = intval(explode(".", $ip_pool[1])[3]);
     $ip_prefix = implode(".", array_slice(explode(".", $ip_pool[0]), 0, 3));
-    
+
     $assigned_ip = '';
     $max_retries = 50;
     for ($i = 0; $i < $max_retries; $i++) {
@@ -196,7 +183,7 @@ function proxmoxlxc_ClientAreaOutput($params, $key){
     if ($key == "info") {
         $res = proxmoxlxc_api_request($params, '/api/status?vmid=' . $params['domain'], 'GET');
         return [
-            'template' => 'templates/info.html', 
+            'template' => 'templates/info.html',
             'vars' => [
                 'params' => $params,
                 'status' => $res['data'] ?? []
@@ -226,9 +213,8 @@ function proxmoxlxc_nat_add($params, $post=""){
 
     $port_pool = explode(',', $params['configoptions']['port_pool']);
     $wan_port = intval($post['wan_port']);
-    
+
     if (empty($wan_port)) {
-        // Find an available port
         $res_list = proxmoxlxc_api_request($params, '/api/nat/list?vmid=' . $params['domain'], 'GET');
         $existing_ports = array_column($res_list['data'] ?? [], 'dport');
         $wan_port = rand($port_pool[0], $port_pool[1]);
@@ -257,8 +243,7 @@ function proxmoxlxc_nat_add($params, $post=""){
 
 function proxmoxlxc_nat_del($params, $post=""){
     if ($post == "") $post = input('post.');
-    
-    // To delete a rule, we need all its details. Let's find it in the list first.
+
     $list_res = proxmoxlxc_api_request($params, '/api/nat/list?vmid=' . $params['domain'], 'GET');
     $rule_to_delete = null;
     foreach($list_res['data'] as $rule) {
@@ -289,41 +274,54 @@ function proxmoxlxc_nat_del($params, $post=""){
 }
 
 function proxmoxlxc_api_request($params, $endpoint, $method = 'GET', $data = []){
-    $url = $params['configoptions']['backend_url'] . $endpoint;
-    $token = $params['configoptions']['backend_token'];
+    $protocol = !empty($params['secure']) ? 'https' : 'http';
+    $port = !empty($params['port']) ? $params['port'] : '8081';
+    $base_url = "{$protocol}://{$params['server_ip']}:{$port}";
+
+    if (empty($params['server_ip'])) {
+        return ['error' => true, 'msg' => "服务器IP地址未配置。请检查服务器设置。"];
+    }
+
+    $url = rtrim($base_url, '/') . '/' . ltrim($endpoint, '/');
+    $token = $params['accesshash'];
 
     $ch = curl_init();
     $headers = [
         'apikey: ' . $token,
         'Content-Type: application/json'
     ];
-    
+
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,FALSE);
-    curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,FALSE);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 45);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE);
 
     if ($method === 'POST' && !empty($data)) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
     }
 
     $response = curl_exec($ch);
-    $error = curl_error($ch);
+    $curl_errno = curl_errno($ch);
+    $curl_error = curl_error($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
-    if ($error) {
-        return ['error' => true, 'msg' => "cURL 错误: " . $error];
+    if ($curl_errno > 0) {
+        return ['error' => true, 'msg' => "cURL 错误 (代码: {$curl_errno}): " . $curl_error];
+    }
+    
+    if (empty($response)) {
+        return ['error' => true, 'msg' => "API未返回任何内容。HTTP状态码: {$http_code}。请检查后端服务是否正常运行以及网络连接是否通畅。"];
     }
 
     $decoded_response = json_decode($response, true);
     if (json_last_error() !== JSON_ERROR_NONE) {
-        return ['error' => true, 'msg' => "JSON解码错误: " . json_last_error_msg() . ". HTTP状态码: {$http_code}. 原始响应: " . $response];
+        return ['error' => true, 'msg' => "JSON解码错误: " . json_last_error_msg() . ". HTTP状态码: {$http_code}. 原始响应: " . htmlspecialchars($response)];
     }
-    
+
     return $decoded_response;
 }
