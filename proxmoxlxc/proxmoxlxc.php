@@ -77,14 +77,20 @@ function proxmoxlxc_ConfigOptions(){
 
 function proxmoxlxc_TestLink($params){
     $res = proxmoxlxc_api_request($params, '/api/check', 'GET');
+
+    if (isset($res['error']) && $res['error'] === true) {
+        return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "无法连接: " . $res['msg']]];
+    }
+
     if ($res && isset($res['code'])) {
         if ($res['code'] == 200) {
             return ['status' => 200, 'data' => ['server_status' => 1, 'msg' => "后端API连接成功: " . $res['msg']]];
         } else {
-            return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "后端API错误: " . ($res['msg'] ?? json_encode($res))]];
+            return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "后端API返回错误(Code:{$res['code']}): " . ($res['msg'] ?? '未知错误')]];
         }
     }
-    return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "无法连接到后端API服务器"]];
+
+    return ['status' => 200, 'data' => ['server_status' => 0, 'msg' => "收到意外的响应格式: " . json_encode($res)]];
 }
 
 function proxmoxlxc_CreateAccount($params){
@@ -298,6 +304,8 @@ function proxmoxlxc_api_request($params, $endpoint, $method = 'GET', $data = [])
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,FALSE);
+    curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,FALSE);
 
     if ($method === 'POST' && !empty($data)) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
@@ -305,10 +313,17 @@ function proxmoxlxc_api_request($params, $endpoint, $method = 'GET', $data = [])
 
     $response = curl_exec($ch);
     $error = curl_error($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
     if ($error) {
-        return null;
+        return ['error' => true, 'msg' => "cURL 错误: " . $error];
     }
-    return json_decode($response, true);
+
+    $decoded_response = json_decode($response, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        return ['error' => true, 'msg' => "JSON解码错误: " . json_last_error_msg() . ". HTTP状态码: {$http_code}. 原始响应: " . $response];
+    }
+    
+    return $decoded_response;
 }
