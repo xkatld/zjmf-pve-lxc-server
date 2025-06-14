@@ -18,8 +18,7 @@ class AppConfig:
 
         self.api_host = parser.get('pve', 'API_HOST', fallback=None)
         self.api_user = parser.get('pve', 'API_USER', fallback='root@pam')
-        self.token_id = parser.get('pve', 'PVE_TOKEN_ID', fallback=None)
-        self.token_secret = parser.get('pve', 'PVE_TOKEN_SECRET', fallback=None)
+        self.api_password = parser.get('pve', 'API_PASSWORD', fallback=None)
         self.node = parser.get('pve', 'NODE', fallback=None)
         self.storage = parser.get('pve', 'STORAGE', fallback=None)
         self.bridge = parser.get('pve', 'BRIDGE', fallback='vmbr0')
@@ -27,8 +26,8 @@ class AppConfig:
         self.main_interface = parser.get('pve', 'MAIN_INTERFACE', fallback=None)
         self.nat_listen_ip = parser.get('pve', 'NAT_LISTEN_IP', fallback=None)
 
-        if not all([self.api_host, self.token_id, self.token_secret, self.node, self.storage]):
-            raise ValueError("PVE 配置不完整 (API_HOST, PVE_TOKEN_ID, PVE_TOKEN_SECRET, NODE, STORAGE 都是必需的)")
+        if not all([self.api_host, self.api_user, self.api_password, self.node, self.storage]):
+            raise ValueError("PVE 配置不完整 (API_HOST, API_USER, API_PASSWORD, NODE, STORAGE 都是必需的)")
         
         if not self.nat_listen_ip:
             raise ValueError("配置文件 [pve] 中必须设置 NAT_LISTEN_IP")
