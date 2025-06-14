@@ -177,19 +177,20 @@ class PVEManager:
         
         vmid = self._get_next_vmid()
         password = params.get('password')
-        cores = params.get('cpu', 1)
-        ram_mb = params.get('ram', 128)
-        disk_gb = math.ceil((params.get('disk', 1024)) / 1024)
+        cores = int(params.get('cpu', 1))
+        ram_mb = int(params.get('ram', 128))
+        disk_gb = math.ceil(int(params.get('disk', 1024)) / 1024)
         template = params.get('system') or app_config.default_template
         
         net_config = f"name=eth0,bridge={app_config.bridge},ip=dhcp"
         if params.get('up') and params.get('down'):
-            rate_mbps = min(int(params.get('up')), int(params.get('down')))
+            # *** FIX IS HERE ***
+            rate_mbps = min(int(float(params.get('up'))), int(float(params.get('down'))))
             net_config += f",rate={rate_mbps}"
 
         metadata = {
-            'nat_acl_limit': params.get('ports', 0),
-            'flow_limit_gb': params.get('bandwidth', 0),
+            'nat_acl_limit': int(params.get('ports', 0)),
+            'flow_limit_gb': int(params.get('bandwidth', 0)),
             'disk_size_gb': disk_gb,
             'owner': 'zjmf'
         }

@@ -1,0 +1,10 @@
+[
+    {
+        "vmid": "100",
+        "container_ip": "10.0.2.108",
+        "dtype": "tcp",
+        "dport": "46703",
+        "sport": "22",
+        "rule_id": "zjmf_pve_nat_100_tcp_46703"
+    }
+]
