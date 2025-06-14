@@ -151,9 +151,10 @@ class PVEManager:
             total_disk_mb = size_in_gb * 1024
             used_disk_mb = math.ceil(status.get('disk', 0) / (1024*1024))
 
-            status_map = {'running': '运行中', 'stopped': '已停止'}
-            lxc_status = status_map.get(status.get('status'), 'unknown')
-
+            status_map = {'running': 'running', 'stopped': 'stop'}
+            pve_raw_status = status.get('status', 'unknown').lower()
+            lxc_status = status_map.get(pve_raw_status, 'unknown')
+            
             metadata = self._get_user_metadata(ct)
             flow_limit_gb = int(metadata.get('flow_limit_gb', 0))
             
@@ -326,12 +327,21 @@ class PVEManager:
         
         try:
             old_config = ct_old.config.get()
+            
+            rootfs_value = old_config.get('rootfs', 'size=1G')
+            size_in_gb = 1
+            for part in rootfs_value.split(','):
+                if part.startswith('size='):
+                    size_in_gb = int(part.replace('size=', '').replace('G', ''))
+                    break
+            disk_in_mb = size_in_gb * 1024
+
             params = {
                 'hostname': hostname,
                 'password': new_password,
                 'cpu': old_config.get('cores'),
                 'ram': old_config.get('memory'),
-                'disk': int(old_config.get('rootfs', '1024').split(':')[-1].replace('size=', '').replace('G', '')) * 1024,
+                'disk': disk_in_mb,
                 'system': new_os_alias,
                 'up': None,
                 'down': None,
@@ -349,7 +359,7 @@ class PVEManager:
             time.sleep(5)
             return self.create_container(params)
         except Exception as e:
-            logger.error(f"重装容器 {hostname} 时发生错误: {e}")
+            logger.error(f"重装容器 {hostname} 时发生错误: {e}", exc_info=True)
             return {'code': 500, 'msg': f'重装容器时发生错误: {e}'}
 
     def list_nat_rules(self, hostname):
