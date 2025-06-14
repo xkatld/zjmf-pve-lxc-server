@@ -56,7 +56,7 @@ class PVEManager:
         try:
             all_containers = self.node.lxc.get()
             for ct in all_containers:
-                if ct.get('hostname') == hostname:
+                if ct.get('name') == hostname:
                     return ct.get('vmid')
             return None
         except Exception as e:
@@ -142,10 +142,16 @@ class PVEManager:
             total_ram_mb = int(config.get('memory', 128))
             used_ram_mb = math.ceil(status.get('mem', 0) / (1024*1024))
             
-            total_disk_mb = int(config.get('rootfs', '1024').split(':')[-1].replace('size=', '').replace('G', '')) * 1024
+            rootfs_value = config.get('rootfs', 'size=1G')
+            size_in_gb = 1
+            for part in rootfs_value.split(','):
+                if part.startswith('size='):
+                    size_in_gb = int(part.replace('size=', '').replace('G', ''))
+                    break
+            total_disk_mb = size_in_gb * 1024
             used_disk_mb = math.ceil(status.get('disk', 0) / (1024*1024))
 
-            status_map = {'running': 'running', 'stopped': 'stop'}
+            status_map = {'running': '运行中', 'stopped': '已停止'}
             lxc_status = status_map.get(status.get('status'), 'unknown')
 
             metadata = self._get_user_metadata(ct)
@@ -184,7 +190,6 @@ class PVEManager:
         
         net_config = f"name=eth0,bridge={app_config.bridge},ip=dhcp"
         if params.get('up') and params.get('down'):
-            # *** FIX IS HERE ***
             rate_mbps = min(int(float(params.get('up'))), int(float(params.get('down'))))
             net_config += f",rate={rate_mbps}"
 
@@ -274,7 +279,31 @@ class PVEManager:
 
     def start_container(self, hostname): return self._power_action(hostname, 'start')
     def stop_container(self, hostname): return self._power_action(hostname, 'stop')
-    def restart_container(self, hostname): return self._power_action(hostname, 'restart')
+
+    def restart_container(self, hostname):
+        ct = self._get_container_or_error(hostname)
+        if not ct:
+            return {'code': 404, 'msg': '容器未找到'}
+        try:
+            current_status = ct.status.current.get().get('status')
+            logger.info(f"对容器 {hostname} 执行重启操作，当前状态: {current_status}")
+
+            if current_status == 'running':
+                ct.status.reboot.post()
+                action_taken = 'reboot'
+            elif current_status == 'stopped':
+                ct.status.start.post()
+                action_taken = 'start (as reboot)'
+            else:
+                msg = f"容器处于'{current_status}'状态，无法执行重启操作。"
+                logger.warning(msg)
+                return {'code': 409, 'msg': msg}
+
+            logger.info(f"容器 {hostname} {action_taken} 操作成功")
+            return {'code': 200, 'msg': '容器重启操作成功'}
+        except Exception as e:
+            logger.error(f"PVE API错误 (restart for {hostname}): {e}", exc_info=True)
+            return {'code': 500, 'msg': f'PVE API错误 (restart): {str(e)}'}
 
     def change_password(self, hostname, new_password):
         ct = self._get_container_or_error(hostname)
