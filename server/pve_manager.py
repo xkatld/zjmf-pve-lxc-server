@@ -35,8 +35,7 @@ class PVEManager:
             self.proxmox = ProxmoxAPI(
                 app_config.api_host,
                 user=app_config.api_user,
-                token_name=app_config.token_id,
-                token_value=app_config.token_secret,
+                password=app_config.api_password,
                 verify_ssl=False
             )
             self.node = self.proxmox.nodes(app_config.node)
