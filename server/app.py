@@ -6,7 +6,7 @@ import datetime
 from math import ceil
 
 from config_handler import app_config
-from pve_manager import PVEManager, _load_iptables_rules_metadata
+from pve_manager import PVEManager
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.secret_key = os.urandom(24)

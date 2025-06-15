@@ -10,24 +10,23 @@ import math
 
 logger = logging.getLogger(__name__)
 
-IPTABLES_RULES_METADATA_FILE = 'iptables_rules.json'
+LOCAL_DATA_FILE = 'pve_local_data.json'
 
-def _load_iptables_rules_metadata():
+def _load_data():
     try:
-        if os.path.exists(IPTABLES_RULES_METADATA_FILE):
-            with open(IPTABLES_RULES_METADATA_FILE, 'r') as f:
+        if os.path.exists(LOCAL_DATA_FILE):
+            with open(LOCAL_DATA_FILE, 'r') as f:
                 return json.load(f)
-        return []
     except Exception as e:
-        logger.error(f"加载iptables规则元数据失败: {e}")
-        return []
+        logger.error(f"加载本地数据文件失败: {e}")
+    return {'containers': [], 'nat_rules': []}
 
-def _save_iptables_rules_metadata(rules):
+def _save_data(data):
     try:
-        with open(IPTABLES_RULES_METADATA_FILE, 'w') as f:
-            json.dump(rules, f, indent=4)
+        with open(LOCAL_DATA_FILE, 'w') as f:
+            json.dump(data, f, indent=4)
     except Exception as e:
-        logger.error(f"保存iptables规则元数据失败: {e}")
+        logger.error(f"保存本地数据文件失败: {e}")
 
 class PVEManager:
     def __init__(self):
@@ -39,6 +38,8 @@ class PVEManager:
                 verify_ssl=False
             )
             self.node = self.proxmox.nodes(app_config.node)
+            if not os.path.exists(LOCAL_DATA_FILE):
+                _save_data({'containers': [], 'nat_rules': []})
         except Exception as e:
             logger.critical(f"无法连接到PVE API: {e}")
             raise RuntimeError(f"无法连接到PVE API: {e}")
@@ -73,36 +74,6 @@ class PVEManager:
             return None
 
     def _get_container_ip(self, container_resource):
-        if not container_resource:
-            return None
-        
-        # 方案一：直接从状态获取 (最高效)
-        try:
-            status = container_resource.status.current.get()
-            if status.get('ip'):
-                logger.debug(f"通过状态API直接获取到IP: {status.get('ip')}")
-                return status.get('ip')
-        except Exception:
-            pass
-
-        # 方案二：通过 LXC Agent 获取 (最可靠)
-        try:
-            agent_interfaces = container_resource.agent.get('network-get-interfaces')
-            if agent_interfaces and 'result' in agent_interfaces:
-                for iface in agent_interfaces['result']:
-                    if iface.get('name').lower() == 'lo':
-                        continue
-                    if 'ip-addresses' in iface:
-                        for addr in iface['ip-addresses']:
-                            if addr.get('ip-address-type') == 'ipv4':
-                                logger.debug(f"通过Agent获取到IP: {addr['ip-address']}")
-                                return addr['ip-address']
-        except Exception as e:
-            # 增加此日志可以帮助判断Agent是否正常
-            logger.debug(f"调用Agent获取IP失败(可能未安装或未运行): {e}")
-            pass
-            
-        # 方案三：从静态配置解析 (用于静态IP)
         try:
             config = container_resource.config.get()
             net0 = config.get('net0')
@@ -115,23 +86,8 @@ class PVEManager:
                         return ip
         except Exception:
             pass
-            
         return None
 
-    def _wait_for_ip_address(self, container_resource, timeout=60, interval=5):
-        start_time = time.time()
-        vmid = container_resource.vmid
-        while time.time() - start_time < timeout:
-            ip = self._get_container_ip(container_resource)
-            if ip:
-                logger.info(f"成功获取到容器 {vmid} 的IP地址: {ip}")
-                return ip
-            logger.debug(f"容器 {vmid} IP尚未就绪，将在 {interval} 秒后重试...")
-            time.sleep(interval)
-        logger.error(f"等待 {timeout} 秒后，获取容器 {vmid} IP地址超时。")
-        return None
-
-    # ... [其余代码保持不变] ...
     def _run_shell_command_for_iptables(self, command_args):
         full_command = ['sudo', 'iptables'] + command_args
         try:
@@ -148,25 +104,22 @@ class PVEManager:
             logger.error(f"执行iptables命令时发生异常: {str(e)}. 命令: {' '.join(full_command)}")
             return False, f"执行iptables命令时发生异常: {str(e)}"
 
-    def _get_user_metadata(self, container_resource):
-        try:
-            config = container_resource.config.get()
-            description = config.get('description', '{}')
-            return json.loads(description)
-        except (json.JSONDecodeError, TypeError):
-            return {}
-
-    def _set_user_metadata(self, container_resource, data_dict):
-        try:
-            description_str = json.dumps(data_dict)
-            container_resource.config.put(description=description_str)
-        except Exception as e:
-            logger.error(f"为容器 {container_resource.vmid} 设置元数据失败: {e}")
+    def _get_container_metadata_from_db(self, hostname):
+        data = _load_data()
+        for container_meta in data['containers']:
+            if container_meta.get('hostname') == hostname:
+                return container_meta
+        return None
 
     def get_container_info(self, hostname):
         ct = self._get_container_or_error(hostname)
         if not ct:
             return {'code': 404, 'msg': '容器未找到'}
+        
+        metadata = self._get_container_metadata_from_db(hostname)
+        if not metadata:
+            return {'code': 404, 'msg': '在本地数据库中未找到容器元数据'}
+
         try:
             status = ct.status.current.get()
             config = ct.config.get()
@@ -177,21 +130,14 @@ class PVEManager:
             total_ram_mb = int(config.get('memory', 128))
             used_ram_mb = math.ceil(status.get('mem', 0) / (1024*1024))
             
-            rootfs_value = config.get('rootfs', 'size=1G')
-            size_in_gb = 1
-            for part in rootfs_value.split(','):
-                if part.startswith('size='):
-                    size_in_gb = int(part.replace('size=', '').replace('G', ''))
-                    break
-            total_disk_mb = size_in_gb * 1024
+            total_disk_mb = metadata.get('disk', 1024)
             used_disk_mb = math.ceil(status.get('disk', 0) / (1024*1024))
 
             status_map = {'running': 'running', 'stopped': 'stop'}
             pve_raw_status = status.get('status', 'unknown').lower()
             lxc_status = status_map.get(pve_raw_status, 'unknown')
             
-            metadata = self._get_user_metadata(ct)
-            flow_limit_gb = int(metadata.get('flow_limit_gb', 0))
+            flow_limit_gb = metadata.get('flow_limit_gb', 0)
             
             bytes_total = status.get('netin', 0) + status.get('netout', 0)
             used_flow_gb = round(bytes_total / (1024*1024*1024), 2)
@@ -219,31 +165,21 @@ class PVEManager:
         
         vmid = self._get_next_vmid()
         
-        net_mode_v4 = params.get('net_mode_v4', 'dhcp')
-        assigned_ip = None
+        ip_template = params.get('ip_template_v4')
+        cidr_prefix = params.get('ip_cidr_prefix_v4')
+        gateway = params.get('gateway_v4')
+        if not all([ip_template, cidr_prefix, gateway]):
+            return {'code': 400, 'msg': '静态IP模式缺少必要的网络参数'}
         
-        if net_mode_v4 == 'static':
-            ip_template = params.get('ip_template_v4')
-            cidr_prefix = params.get('ip_cidr_prefix_v4')
-            gateway = params.get('gateway_v4')
-            if not all([ip_template, cidr_prefix, gateway]):
-                return {'code': 400, 'msg': '静态IP模式缺少必要的网络参数(ip_template_v4, ip_cidr_prefix_v4, gateway_v4)'}
-            
-            assigned_ip = ip_template.replace('{vmid}', str(vmid))
-            net_config = f"name=eth0,bridge={app_config.bridge},ip={assigned_ip}/{cidr_prefix},gw={gateway}"
-        else:
-            net_config = f"name=eth0,bridge={app_config.bridge},ip=dhcp"
+        assigned_ip = ip_template.replace('{vmid}', str(vmid))
+        net_config = f"name=eth0,bridge={app_config.bridge},ip={assigned_ip}/{cidr_prefix},gw={gateway}"
 
         if params.get('up') and params.get('down'):
             rate_mbps = min(int(float(params.get('up'))), int(float(params.get('down'))))
             net_config += f",rate={rate_mbps}"
 
-        metadata = {
-            'nat_acl_limit': int(params.get('ports', 0)),
-            'flow_limit_gb': int(params.get('bandwidth', 0)),
-            'disk_size_gb': math.ceil(int(params.get('disk', 1024)) / 1024),
-            'owner': 'zjmf'
-        }
+        disk_size_mb = int(params.get('disk', 1024))
+        disk_size_gb = math.ceil(disk_size_mb / 1024)
 
         create_params = {
             'vmid': vmid,
@@ -253,11 +189,10 @@ class PVEManager:
             'storage': app_config.storage,
             'cores': int(params.get('cpu', 1)),
             'memory': int(params.get('ram', 128)),
-            'rootfs': f"{app_config.storage}:{metadata['disk_size_gb']}",
+            'rootfs': f"{app_config.storage}:{disk_size_gb}",
             'net0': net_config,
             'onboot': 1,
             'start': 1,
-            'description': json.dumps(metadata)
         }
 
         try:
@@ -269,6 +204,22 @@ class PVEManager:
                 time.sleep(2)
                 if time.time() - start_time > 300:
                     raise Exception("创建任务超时")
+
+            new_container_metadata = {
+                'vmid': vmid,
+                'hostname': hostname,
+                'ip': assigned_ip,
+                'cpu': int(params.get('cpu', 1)),
+                'ram': int(params.get('ram', 128)),
+                'disk': disk_size_mb,
+                'os': params.get('system') or app_config.default_template,
+                'nat_acl_limit': int(params.get('ports', 0)),
+                'flow_limit_gb': int(params.get('bandwidth', 0)),
+                'owner': 'zjmf'
+            }
+            data = _load_data()
+            data['containers'].append(new_container_metadata)
+            _save_data(data)
 
             ssh_port = 0
             try:
@@ -292,12 +243,11 @@ class PVEManager:
         try:
             logger.info(f"开始删除容器 {hostname} (VMID: {vmid})")
             
-            rules_metadata = _load_iptables_rules_metadata()
-            rules_to_delete = [r for r in rules_metadata if r.get('hostname') == hostname]
+            data = _load_data()
+            rules_to_delete = [r for r in data['nat_rules'] if r.get('hostname') == hostname]
             for rule in rules_to_delete:
                 self.delete_nat_rule_via_iptables(
-                    hostname, rule['dtype'], rule['dport'], rule['sport'],
-                    container_ip_at_creation_time=rule.get('container_ip')
+                    hostname, rule['dtype'], rule['dport'], rule['sport']
                 )
 
             ct = self.node.lxc(vmid)
@@ -310,6 +260,11 @@ class PVEManager:
                         break
             
             ct.delete()
+
+            data_after_delete = _load_data()
+            data_after_delete['containers'] = [c for c in data_after_delete['containers'] if c.get('hostname') != hostname]
+            _save_data(data_after_delete)
+
             logger.info(f"容器 {hostname} 删除成功")
             return {'code': 200, 'msg': '容器删除成功'}
         except Exception as e:
@@ -343,7 +298,6 @@ class PVEManager:
         try:
             current_status = ct.status.current.get().get('status')
             logger.info(f"对容器 {hostname} 执行重启操作，当前状态: {current_status}")
-
             if current_status == 'running':
                 ct.status.reboot.post()
                 action_taken = 'reboot'
@@ -354,7 +308,6 @@ class PVEManager:
                 msg = f"容器处于'{current_status}'状态，无法执行重启操作。"
                 logger.warning(msg)
                 return {'code': 409, 'msg': msg}
-
             logger.info(f"容器 {hostname} {action_taken} 操作成功")
             return {'code': 200, 'msg': '容器重启操作成功'}
         except Exception as e:
@@ -364,7 +317,6 @@ class PVEManager:
     def change_password(self, hostname, new_password):
         ct = self._get_container_or_error(hostname)
         if not ct: return {'code': 404, 'msg': '容器未找到'}
-        
         if ct.status.current.get()['status'] != 'running':
             return {'code': 400, 'msg': '容器未运行'}
         try:
@@ -377,60 +329,49 @@ class PVEManager:
             return {'code': 500, 'msg': f'修改密码时发生错误: {e}'}
 
     def reinstall_container(self, hostname, new_os_alias, new_password):
-        ct_old = self._get_container_or_error(hostname)
-        if not ct_old: return {'code': 404, 'msg': '容器未找到'}
+        old_metadata = self._get_container_metadata_from_db(hostname)
+        if not old_metadata: return {'code': 404, 'msg': '在本地数据库中未找到要重装的容器'}
         
         try:
+            ct_old = self._get_container_or_error(hostname)
             old_config = ct_old.config.get()
-            old_metadata = self._get_user_metadata(ct_old)
-            
-            rootfs_value = old_config.get('rootfs', 'size=1G')
-            size_in_gb = 1
-            for part in rootfs_value.split(','):
-                if part.startswith('size='):
-                    size_in_gb = int(part.replace('size=', '').replace('G', ''))
-                    break
-            disk_in_mb = size_in_gb * 1024
-            
+            net0 = old_config.get('net0', '')
+
+            rate_mbps = 0
+            if 'rate=' in net0:
+                rate_str = [p for p in net0.split(',') if p.startswith('rate=')][0]
+                rate_mbps = int(rate_str.replace('rate=', ''))
+
             params_for_create = {
                 'hostname': hostname,
                 'password': new_password,
-                'cpu': old_config.get('cores'),
-                'ram': old_config.get('memory'),
-                'disk': disk_in_mb,
+                'cpu': old_metadata.get('cpu'),
+                'ram': old_metadata.get('ram'),
+                'disk': old_metadata.get('disk'),
                 'system': new_os_alias,
-                'up': None, 'down': None,
+                'up': rate_mbps, 'down': rate_mbps,
                 'ports': old_metadata.get('nat_acl_limit', 0),
-                'bandwidth': old_metadata.get('flow_limit_gb', 0)
+                'bandwidth': old_metadata.get('flow_limit_gb', 0),
+                'ip_template_v4': f"{old_metadata.get('ip')}",
+                'ip_cidr_prefix_v4': net0.split('/')[1].split(',')[0],
+                'gateway_v4': [p.replace('gw=', '') for p in net0.split(',') if p.startswith('gw=')][0],
             }
-            net0 = old_config.get('net0')
-            if 'ip=dhcp' in net0:
-                 params_for_create['net_mode_v4'] = 'dhcp'
-            else:
-                params_for_create['net_mode_v4'] = 'static'
-                # This logic is complex. We simplify by assuming the admin has set up new product configs.
-                # A truly robust reinstall would need access to the original product configuration.
-                # For now, this is a known limitation. A better way is needed if static IPs need to persist perfectly on reinstall.
             
-            if net0 and 'rate=' in net0:
-                rate_str = [p for p in net0.split(',') if p.startswith('rate=')][0]
-                rate_mbps = int(rate_str.replace('rate=', ''))
-                params_for_create['up'] = rate_mbps
-                params_for_create['down'] = rate_mbps
-
             self.delete_container(hostname)
-            
             time.sleep(5) 
             
-            return self.create_container(params_for_create)
+            reinstall_result = self.create_container(params_for_create)
+            if reinstall_result.get('code') == 200:
+                reinstall_result['msg'] = '容器重装成功'
+            return reinstall_result
         except Exception as e:
             logger.error(f"重装容器 {hostname} 时发生错误: {e}", exc_info=True)
             return {'code': 500, 'msg': f'重装容器时发生错误: {e}'}
 
     def list_nat_rules(self, hostname):
-        rules_metadata = _load_iptables_rules_metadata()
+        data = _load_data()
         container_rules = []
-        for rule_meta in rules_metadata:
+        for rule_meta in data['nat_rules']:
             if rule_meta.get('hostname') == hostname:
                 container_rules.append({
                     'Dtype': rule_meta.get('dtype','').upper(),
@@ -441,25 +382,24 @@ class PVEManager:
         return {'code': 200, 'msg': '获取成功', 'data': container_rules}
 
     def add_nat_rule_via_iptables(self, hostname, dtype, dport, sport):
-        ct = self._get_container_or_error(hostname)
-        if not ct: return {'code': 404, 'msg': '容器未找到'}
+        metadata = self._get_container_metadata_from_db(hostname)
+        if not metadata: return {'code': 404, 'msg': '容器元数据未找到'}
 
-        metadata = self._get_user_metadata(ct)
         limit = int(metadata.get('nat_acl_limit', 0))
-        rules_metadata = _load_iptables_rules_metadata()
-        current_host_rules_count = sum(1 for r in rules_metadata if r.get('hostname') == hostname and str(r.get('sport')) != '22')
+        data = _load_data()
+        current_host_rules_count = sum(1 for r in data['nat_rules'] if r.get('hostname') == hostname and str(r.get('sport')) != '22')
         
         is_ssh_rule = (str(sport) == '22' and dtype.lower() == 'tcp')
         if not is_ssh_rule and limit > 0 and current_host_rules_count >= limit:
             return {'code': 403, 'msg': f'已达到NAT规则数量上限 ({limit}条)'}
 
-        for rule_meta in rules_metadata:
+        for rule_meta in data['nat_rules']:
             if str(rule_meta.get('dport')) == str(dport) and rule_meta.get('dtype', '').lower() == dtype.lower():
                 return {'code': 409, 'msg': '此外部端口和协议已被占用'}
         
-        container_ip = self._wait_for_ip_address(ct)
+        container_ip = metadata.get('ip')
         if not container_ip:
-            return {'code': 500, 'msg': '无法获取容器内部IP地址，请检查容器网络配置或DHCP服务。'}
+            return {'code': 500, 'msg': '无法从数据库获取容器IP地址。'}
 
         rule_comment = f'zjmf_pve_nat_{hostname}_{dtype.lower()}_{dport}'
         dnat_args = [
@@ -486,14 +426,14 @@ class PVEManager:
             'hostname': hostname, 'dtype': dtype.lower(), 'dport': str(dport),
             'sport': str(sport), 'container_ip': container_ip, 'rule_id': rule_comment
         }
-        rules_metadata.append(new_rule_meta)
-        _save_iptables_rules_metadata(rules_metadata)
+        data['nat_rules'].append(new_rule_meta)
+        _save_data(data)
         return {'code': 200, 'msg': 'NAT规则(iptables)添加成功'}
 
-    def delete_nat_rule_via_iptables(self, hostname, dtype, dport, sport, container_ip_at_creation_time=None):
-        rules_metadata = _load_iptables_rules_metadata()
+    def delete_nat_rule_via_iptables(self, hostname, dtype, dport, sport):
+        data = _load_data()
         rule_to_delete_meta = None
-        for rule in rules_metadata:
+        for rule in data['nat_rules']:
             if rule.get('hostname') == hostname and rule.get('dtype', '').lower() == dtype.lower() and \
                str(rule.get('dport')) == str(dport) and str(rule.get('sport')) == str(sport):
                 rule_to_delete_meta = rule
@@ -525,6 +465,6 @@ class PVEManager:
         ]
         self._run_shell_command_for_iptables(masquerade_del_args)
 
-        final_rules_to_keep = [r for r in rules_metadata if r.get('rule_id') != rule_comment]
-        _save_iptables_rules_metadata(final_rules_to_keep)
+        data['nat_rules'] = [r for r in data['nat_rules'] if r.get('rule_id') != rule_comment]
+        _save_data(data)
         return {'code': 200, 'msg': 'NAT规则(iptables)删除尝试完成'}

@@ -65,30 +65,22 @@ function pveserver_ConfigOptions()
             'key'         => 'os',
         ],
         [
-            'type'        => 'dropdown',
-            'name'        => '网络模式 (IPv4)',
-            'description' => '选择为容器分配IPv4地址的模式',
-            'options'     => 'dhcp,static',
-            'default'     => 'dhcp',
-            'key'         => 'net_mode_v4',
-        ],
-        [
             'type'        => 'text',
             'name'        => 'IP地址模板 (IPv4)',
-            'description' => '静态模式下必填。使用 {vmid} 作为占位符, e.g., 192.168.1.{vmid}',
+            'description' => '必填。使用 {vmid} 作为占位符, e.g., 192.168.1.{vmid}',
             'key'         => 'ip_template_v4',
         ],
         [
             'type'        => 'text',
             'name'        => 'CIDR前缀 (IPv4)',
-            'description' => '静态模式下必填。仅填写数字, e.g., 24',
+            'description' => '必填。仅填写数字, e.g., 24',
             'default'     => '24',
             'key'         => 'ip_cidr_prefix_v4',
         ],
         [
             'type'        => 'text',
             'name'        => '网关 (IPv4)',
-            'description' => '静态模式下必填。e.g., 192.168.1.1',
+            'description' => '必填。e.g., 192.168.1.1',
             'key'         => 'gateway_v4',
         ]
     ];
@@ -115,25 +107,20 @@ function pveserver_CreateAccount($params)
 {
     $config = $params['configoptions'];
     $payload = [
-        'hostname'  => $params['domain'],
-        'password'  => $params['password'] ?? randStr(8),
-        'cpu'       => $config['CPU'] ?? 1,
-        'disk'      => $config['Disk Space'] ?? 1024,
-        'ram'       => $config['Memory'] ?? 128,
-        'system'    => $config['os'] ?? '',
-        'up'        => $config['net_limit'] ?? 10,
-        'down'      => $config['net_limit'] ?? 10,
-        'ports'     => (int)($config['nat_acl_limit'] ?? 2),
-        'bandwidth' => (int)($config['flow_limit'] ?? 0),
-        
-        'net_mode_v4' => $config['net_mode_v4'] ?? 'dhcp',
+        'hostname'          => $params['domain'],
+        'password'          => $params['password'] ?? randStr(8),
+        'cpu'               => $config['CPU'] ?? 1,
+        'disk'              => $config['Disk Space'] ?? 1024,
+        'ram'               => $config['Memory'] ?? 128,
+        'system'            => $config['os'] ?? '',
+        'up'                => $config['net_limit'] ?? 10,
+        'down'              => $config['net_limit'] ?? 10,
+        'ports'             => (int)($config['nat_acl_limit'] ?? 2),
+        'bandwidth'         => (int)($config['flow_limit'] ?? 0),
+        'ip_template_v4'    => $config['ip_template_v4'] ?? '',
+        'ip_cidr_prefix_v4' => $config['ip_cidr_prefix_v4'] ?? '',
+        'gateway_v4'        => $config['gateway_v4'] ?? '',
     ];
-
-    if ($payload['net_mode_v4'] === 'static') {
-        $payload['ip_template_v4'] = $config['ip_template_v4'] ?? '';
-        $payload['ip_cidr_prefix_v4'] = $config['ip_cidr_prefix_v4'] ?? '';
-        $payload['gateway_v4'] = $config['gateway_v4'] ?? '';
-    }
 
     $data = [
         'url'  => '/api/create',
