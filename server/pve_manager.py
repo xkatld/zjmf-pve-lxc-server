@@ -115,6 +115,8 @@ class PVEManager:
         ct = self._get_container_or_error(hostname)
         if not ct:
             return {'code': 404, 'msg': '容器未找到'}
+
+        vmid = self._find_vmid_by_hostname(hostname)
         
         metadata = self._get_container_metadata_from_db(hostname)
         if not metadata:
@@ -131,7 +133,31 @@ class PVEManager:
             used_ram_mb = math.ceil(status.get('mem', 0) / (1024*1024))
             
             total_disk_mb = metadata.get('disk', 1024)
-            used_disk_mb = math.ceil(status.get('disk', 0) / (1024*1024))
+            
+            used_disk_mb = 0
+            try:
+                if vmid and status.get('status') == 'running':
+                    full_command = ['sudo', 'pct', 'exec', str(vmid), '--', 'df', '-m', '/']
+                    logger.debug(f"执行 df 命令: {' '.join(full_command)}")
+                    process = subprocess.Popen(full_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    stdout, stderr = process.communicate(timeout=10)
+                    
+                    if process.returncode == 0 and stdout:
+                        lines = stdout.strip().split('\n')
+                        if len(lines) > 1:
+                            parts = lines[1].split()
+                            if len(parts) >= 3:
+                                used_disk_mb = int(parts[2])
+                    else:
+                        logger.warning(f"df 命令执行失败或无输出. stderr: {stderr.strip()}")
+                else:
+                    logger.warning(f"容器 {hostname} 未运行或未找到VMID，无法执行df")
+            except Exception as e:
+                logger.error(f"执行df命令时发生异常 for {hostname}: {e}", exc_info=True)
+
+            if used_disk_mb == 0:
+                logger.warning(f"pct exec df 失败, 回退到API获取磁盘使用情况 for {hostname}")
+                used_disk_mb = math.ceil(status.get('disk', 0) / (1024*1024))
 
             status_map = {'running': 'running', 'stopped': 'stop'}
             pve_raw_status = status.get('status', 'unknown').lower()
@@ -315,18 +341,37 @@ class PVEManager:
             return {'code': 500, 'msg': f'PVE API错误 (restart): {str(e)}'}
 
     def change_password(self, hostname, new_password):
-        ct = self._get_container_or_error(hostname)
-        if not ct: return {'code': 404, 'msg': '容器未找到'}
-        if ct.status.current.get()['status'] != 'running':
-            return {'code': 400, 'msg': '容器未运行'}
+        vmid = self._find_vmid_by_hostname(hostname)
+        if not vmid:
+            return {'code': 404, 'msg': '容器未找到'}
+
         try:
-            logger.info(f"开始为容器 {hostname} 修改密码")
-            command = f"echo 'root:{new_password}' | chpasswd"
-            ct.exec.post(command=['/bin/bash', '-c', command])
+            ct = self.node.lxc(vmid)
+            if ct.status.current.get()['status'] != 'running':
+                return {'code': 400, 'msg': '容器未运行'}
+        except Exception as e:
+            logger.error(f"获取容器 {hostname} 状态时发生错误: {e}")
+            return {'code': 500, 'msg': f'获取容器状态时发生错误: {e}'}
+
+        try:
+            logger.info(f"开始为容器 {hostname} (VMID: {vmid}) 通过 pct exec 修改密码")
+            inner_command = f"echo 'root:{new_password}' | chpasswd"
+            full_command = ['sudo', 'pct', 'exec', str(vmid), '--', '/bin/bash', '-c', inner_command]
+
+            logger.debug(f"执行密码修改命令: {' '.join(full_command)}")
+            process = subprocess.Popen(full_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate(timeout=30)
+
+            if process.returncode != 0:
+                error_message = stderr.decode('utf-8', errors='ignore').strip()
+                logger.error(f"pct exec 命令执行失败 ({process.returncode}): {error_message}. 命令: {' '.join(full_command)}")
+                return {'code': 500, 'msg': f"密码修改失败: {error_message}"}
+
+            logger.info(f"容器 {hostname} 密码修改成功")
             return {'code': 200, 'msg': '密码修改成功'}
         except Exception as e:
-            logger.error(f"修改密码 for {hostname} 时发生错误: {e}")
-            return {'code': 500, 'msg': f'修改密码时发生错误: {e}'}
+            logger.error(f"修改密码 for {hostname} 过程中发生异常: {e}", exc_info=True)
+            return {'code': 500, 'msg': f'修改密码时发生未知错误: {e}'}
 
     def reinstall_container(self, hostname, new_os_alias, new_password):
         old_metadata = self._get_container_metadata_from_db(hostname)

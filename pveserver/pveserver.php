@@ -161,7 +161,17 @@ function pveserver_ClientAreaOutput($params, $key)
 {
     if ($key == 'info') {
         $res = pveserver_Curl($params, ['url'  => '/api/getinfo?hostname=' . $params['domain']], 'GET');
-        if (isset($res['code']) && $res['code'] == 200) {
+        if (isset($res['code']) && $res['code'] == 200 && isset($res['data'])) {
+            if (isset($res['data']['UsedDisk'])) {
+                $res['data']['UsedDiskGB'] = number_format($res['data']['UsedDisk'] / 1024, 2);
+            } else {
+                $res['data']['UsedDiskGB'] = '0.00';
+            }
+            if (isset($res['data']['TotalDisk'])) {
+                $res['data']['TotalDiskGB'] = number_format($res['data']['TotalDisk'] / 1024, 2);
+            } else {
+                $res['data']['TotalDiskGB'] = '0.00';
+            }
             return ['template' => 'templates/info.html', 'vars' => ['data' => $res['data']]];
         }
         return ['template' => 'templates/error.html', 'vars' => ['msg' => $res['msg'] ?? '获取信息失败']];
