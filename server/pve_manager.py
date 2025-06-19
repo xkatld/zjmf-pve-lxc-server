@@ -1,7 +1,7 @@
 from proxmoxer import ProxmoxAPI
 from config_handler import app_config
 import logging
-import json
+import sqlite3
 import subprocess
 import os
 import random
@@ -10,23 +10,46 @@ import math
 
 logger = logging.getLogger(__name__)
 
-LOCAL_DATA_FILE = 'pve_local_data.json'
+LOCAL_DB_FILE = 'pve_local_data.db'
 
-def _load_data():
-    try:
-        if os.path.exists(LOCAL_DATA_FILE) and os.path.getsize(LOCAL_DATA_FILE) > 0:
-            with open(LOCAL_DATA_FILE, 'r') as f:
-                return json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
-        logger.error(f"加载或解析本地数据文件失败: {e}, 将返回空模板。")
-    return {'containers': [], 'nat_rules': []}
+def get_db_connection():
+    conn = sqlite3.connect(LOCAL_DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-def _save_data(data):
-    try:
-        with open(LOCAL_DATA_FILE, 'w') as f:
-            json.dump(data, f, indent=4)
-    except IOError as e:
-        logger.error(f"保存本地数据文件失败: {e}")
+def init_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS containers (
+            vmid INTEGER PRIMARY KEY,
+            hostname TEXT NOT NULL UNIQUE,
+            ip TEXT,
+            cpu INTEGER,
+            ram INTEGER,
+            disk INTEGER,
+            os TEXT,
+            nat_acl_limit INTEGER,
+            flow_limit_gb INTEGER,
+            ssh_port INTEGER,
+            owner TEXT
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS nat_rules (
+            rule_id TEXT PRIMARY KEY,
+            hostname TEXT NOT NULL,
+            dtype TEXT NOT NULL,
+            dport TEXT NOT NULL,
+            sport TEXT NOT NULL,
+            container_ip TEXT NOT NULL
+        )
+    ''')
+
+    conn.commit()
+    conn.close()
 
 class PVEManager:
     def __init__(self):
@@ -38,8 +61,7 @@ class PVEManager:
                 verify_ssl=False
             )
             self.node = self.proxmox.nodes(app_config.node)
-            if not os.path.exists(LOCAL_DATA_FILE) or os.path.getsize(LOCAL_DATA_FILE) == 0:
-                _save_data({'containers': [], 'nat_rules': []})
+            init_db()
         except Exception as e:
             logger.critical(f"无法连接到PVE API: {e}")
             raise RuntimeError(f"无法连接到PVE API: {e}")
@@ -104,12 +126,21 @@ class PVEManager:
             logger.error(f"执行命令时发生异常: {str(e)}. 命令: {' '.join(full_command)}")
             return False, f"执行命令时发生异常: {str(e)}"
 
+    def _get_all_containers_from_db(self):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM containers")
+        containers = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in containers]
+
     def _get_container_metadata_from_db(self, hostname):
-        data = _load_data()
-        for container_meta in data['containers']:
-            if container_meta.get('hostname') == hostname:
-                return container_meta
-        return None
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM containers WHERE hostname = ?", (hostname,))
+        container_meta = cursor.fetchone()
+        conn.close()
+        return dict(container_meta) if container_meta else None
 
     def get_container_info(self, hostname):
         ct = self._get_container_or_error(hostname)
@@ -176,7 +207,6 @@ class PVEManager:
         self._run_shell_command(chpasswd_full_cmd)
         logger.info(f"成功为容器 {vmid} 创建了普通用户 {username}。")
 
-
     def create_container(self, params, ssh_port_override=None):
         hostname = params.get('hostname')
         if self._find_vmid_by_hostname(hostname):
@@ -212,16 +242,20 @@ class PVEManager:
             time.sleep(10)
             self._setup_new_user(vmid, hostname, params.get('password'))
             ssh_port = ssh_port_override if ssh_port_override is not None else random.randint(10000, 65535)
-            new_container_metadata = {
-                'vmid': vmid, 'hostname': hostname, 'ip': assigned_ip,
-                'cpu': int(params.get('cpu', 1)), 'ram': int(params.get('ram', 128)),
-                'disk': disk_size_mb, 'os': params.get('system') or app_config.default_template,
-                'nat_acl_limit': int(params.get('ports', 0)), 'flow_limit_gb': int(params.get('bandwidth', 0)),
-                'ssh_port': ssh_port, 'owner': 'zjmf'
-            }
-            data = _load_data()
-            data['containers'].append(new_container_metadata)
-            _save_data(data)
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO containers (vmid, hostname, ip, cpu, ram, disk, os, nat_acl_limit, flow_limit_gb, ssh_port, owner)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                vmid, hostname, assigned_ip, int(params.get('cpu', 1)), int(params.get('ram', 128)),
+                disk_size_mb, params.get('system') or app_config.default_template,
+                int(params.get('ports', 0)), int(params.get('bandwidth', 0)), ssh_port, 'zjmf'
+            ))
+            conn.commit()
+            conn.close()
+
             try:
                 add_rule_result = self.add_nat_rule_via_iptables(hostname, 'tcp', str(ssh_port), '22')
                 if add_rule_result['code'] != 200:
@@ -240,8 +274,13 @@ class PVEManager:
             return {'code': 404, 'msg': '容器未找到'}
         try:
             logger.info(f"开始删除容器 {hostname} (VMID: {vmid})")
-            data = _load_data()
-            rules_to_delete = [r for r in data['nat_rules'] if r.get('hostname') == hostname]
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM nat_rules WHERE hostname = ?", (hostname,))
+            rules_to_delete = cursor.fetchall()
+            conn.close()
+
             for rule in rules_to_delete:
                 self.delete_nat_rule_via_iptables(
                     hostname, rule['dtype'], rule['dport'], rule['sport'], from_delete=True
@@ -255,10 +294,14 @@ class PVEManager:
                     if time.time() - start_time > 60:
                         break
             ct.delete()
-            data_after_delete = _load_data()
-            data_after_delete['containers'] = [c for c in data_after_delete['containers'] if c.get('hostname') != hostname]
-            data_after_delete['nat_rules'] = [r for r in data_after_delete['nat_rules'] if r.get('hostname') != hostname]
-            _save_data(data_after_delete)
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM containers WHERE hostname = ?", (hostname,))
+            cursor.execute("DELETE FROM nat_rules WHERE hostname = ?", (hostname,))
+            conn.commit()
+            conn.close()
+
             logger.info(f"容器 {hostname} 删除成功")
             return {'code': 200, 'msg': '容器删除成功'}
         except Exception as e:
@@ -372,33 +415,47 @@ class PVEManager:
             return {'code': 500, 'msg': f'重装容器时发生错误: {e}'}
 
     def list_nat_rules(self, hostname):
-        data = _load_data()
-        container_rules = []
-        for rule_meta in data['nat_rules']:
-            if rule_meta.get('hostname') == hostname:
-                container_rules.append({
-                    'Dtype': rule_meta.get('dtype','').upper(),
-                    'Dport': rule_meta.get('dport'),
-                    'Sport': rule_meta.get('sport'),
-                    'ID': rule_meta.get('rule_id', f"iptables-{rule_meta.get('dtype')}-{rule_meta.get('dport')}")
-                })
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM nat_rules WHERE hostname = ?", (hostname,))
+        rules = cursor.fetchall()
+        conn.close()
+        
+        container_rules = [{
+            'Dtype': rule['dtype'].upper(),
+            'Dport': rule['dport'],
+            'Sport': rule['sport'],
+            'ID': rule['rule_id']
+        } for rule in rules]
+        
         return {'code': 200, 'msg': '获取成功', 'data': container_rules}
 
     def add_nat_rule_via_iptables(self, hostname, dtype, dport, sport):
         metadata = self._get_container_metadata_from_db(hostname)
         if not metadata: return {'code': 404, 'msg': '容器元数据未找到'}
         limit = int(metadata.get('nat_acl_limit', 0))
-        data = _load_data()
-        current_host_rules_count = sum(1 for r in data['nat_rules'] if r.get('hostname') == hostname and str(r.get('sport')) != '22')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM nat_rules WHERE hostname = ? AND sport != '22'", (hostname,))
+        current_host_rules_count = cursor.fetchone()[0]
+
         is_ssh_rule = (str(sport) == '22' and dtype.lower() == 'tcp')
         if not is_ssh_rule and limit > 0 and current_host_rules_count >= limit:
+            conn.close()
             return {'code': 403, 'msg': f'已达到NAT规则数量上限 ({limit}条)'}
-        for rule_meta in data['nat_rules']:
-            if str(rule_meta.get('dport')) == str(dport) and rule_meta.get('dtype', '').lower() == dtype.lower():
-                return {'code': 409, 'msg': '此外部端口和协议已被占用'}
+        
+        cursor.execute("SELECT * FROM nat_rules WHERE dport = ? AND dtype = ?", (str(dport), dtype.lower()))
+        existing_rule = cursor.fetchone()
+        if existing_rule:
+            conn.close()
+            return {'code': 409, 'msg': '此外部端口和协议已被占用'}
+        
         container_ip = metadata.get('ip')
         if not container_ip:
+            conn.close()
             return {'code': 500, 'msg': '无法从数据库获取容器IP地址。'}
+
         rule_comment = f'zjmf_pve_nat_{hostname}_{dtype.lower()}_{dport}'
         dnat_args = [
             'iptables', '-t', 'nat', '-A', 'PREROUTING', '-d', app_config.nat_listen_ip,
@@ -407,7 +464,10 @@ class PVEManager:
             '-m', 'comment', '--comment', rule_comment
         ]
         success_dnat, msg_dnat = self._run_shell_command(dnat_args)
-        if not success_dnat: return {'code': 500, 'msg': f"添加DNAT规则失败: {msg_dnat}"}
+        if not success_dnat: 
+            conn.close()
+            return {'code': 500, 'msg': f"添加DNAT规则失败: {msg_dnat}"}
+        
         masquerade_args = [
             'iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s', container_ip,
             '-o', app_config.main_interface, '-j', 'MASQUERADE',
@@ -417,31 +477,35 @@ class PVEManager:
         if not success_masq:
             dnat_del_args = ['iptables', '-t', 'nat', '-D', 'PREROUTING'] + dnat_args[5:]
             self._run_shell_command(dnat_del_args)
+            conn.close()
             return {'code': 500, 'msg': f"添加MASQUERADE规则失败: {msg_masq}"}
-        new_rule_meta = {
-            'hostname': hostname, 'dtype': dtype.lower(), 'dport': str(dport),
-            'sport': str(sport), 'container_ip': container_ip, 'rule_id': rule_comment
-        }
-        data['nat_rules'].append(new_rule_meta)
-        _save_data(data)
+        
+        cursor.execute('''
+            INSERT INTO nat_rules (rule_id, hostname, dtype, dport, sport, container_ip)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (rule_comment, hostname, dtype.lower(), str(dport), str(sport), container_ip))
+        conn.commit()
+        conn.close()
+        
         return {'code': 200, 'msg': 'NAT规则(iptables)添加成功'}
 
     def delete_nat_rule_via_iptables(self, hostname, dtype, dport, sport, from_delete=False):
-        data = _load_data()
-        rule_to_delete_meta = None
-        for rule in data['nat_rules']:
-            if rule.get('hostname') == hostname and rule.get('dtype', '').lower() == dtype.lower() and \
-               str(rule.get('dport')) == str(dport) and str(rule.get('sport')) == str(sport):
-                rule_to_delete_meta = rule
-                break
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM nat_rules 
+            WHERE hostname = ? AND dtype = ? AND dport = ? AND sport = ?
+        """, (hostname, dtype.lower(), str(dport), str(sport)))
+        rule_to_delete_meta = cursor.fetchone()
+        
         if not rule_to_delete_meta:
+            conn.close()
             logger.warning(f"请求删除一个不存在于元数据中的规则: h:{hostname} dt:{dtype} dp:{dport} sp:{sport}")
             return {'code': 404, 'msg': '未在元数据中找到该规则'}
-        container_ip = rule_to_delete_meta.get('container_ip')
-        rule_comment = rule_to_delete_meta.get('rule_id')
-        if not container_ip or not rule_comment:
-            logger.error(f"元数据损坏，无法删除规则: {rule_to_delete_meta}")
-            return {'code': 500, 'msg': '规则元数据损坏'}
+        
+        container_ip = rule_to_delete_meta['container_ip']
+        rule_comment = rule_to_delete_meta['rule_id']
+
         dnat_del_args = [
             'iptables', '-t', 'nat', '-D', 'PREROUTING', '-d', app_config.nat_listen_ip,
             '-p', dtype.lower(), '--dport', str(dport),
@@ -449,13 +513,17 @@ class PVEManager:
             '-m', 'comment', '--comment', rule_comment
         ]
         self._run_shell_command(dnat_del_args)
+        
         masquerade_del_args = [
             'iptables', '-t', 'nat', '-D', 'POSTROUTING', '-s', container_ip,
             '-o', app_config.main_interface, '-j', 'MASQUERADE',
             '-m', 'comment', '--comment', f'{rule_comment}_masq'
         ]
         self._run_shell_command(masquerade_del_args)
+
         if not from_delete:
-            data['nat_rules'] = [r for r in data['nat_rules'] if r.get('rule_id') != rule_comment]
-            _save_data(data)
+            cursor.execute("DELETE FROM nat_rules WHERE rule_id = ?", (rule_comment,))
+            conn.commit()
+        
+        conn.close()
         return {'code': 200, 'msg': 'NAT规则(iptables)删除尝试完成'}

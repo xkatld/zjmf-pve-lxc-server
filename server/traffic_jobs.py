@@ -1,6 +1,6 @@
 import logging
 import datetime
-from pve_manager import PVEManager, _load_data
+from pve_manager import PVEManager
 
 logger = logging.getLogger(__name__)
 
@@ -12,12 +12,12 @@ def check_traffic_and_suspend():
         logger.critical(f"APScheduler: 无法初始化PVEManager，任务中止: {e}")
         return
 
-    data = _load_data()
-    if not data.get('containers'):
+    all_containers = pve._get_all_containers_from_db()
+    if not all_containers:
         logger.info("APScheduler: 没有找到任何容器，任务结束。")
         return
 
-    for container_meta in data['containers']:
+    for container_meta in all_containers:
         hostname = container_meta.get('hostname')
         flow_limit_gb = container_meta.get('flow_limit_gb', 0)
 
@@ -54,11 +54,11 @@ def reset_and_reactivate():
         logger.critical(f"APScheduler: 无法初始化PVEManager，任务中止: {e}")
         return
 
-    data = _load_data()
-    if not data.get('containers'):
+    all_containers = pve._get_all_containers_from_db()
+    if not all_containers:
         return
         
-    for container_meta in data['containers']:
+    for container_meta in all_containers:
         hostname = container_meta.get('hostname')
         flow_limit_gb = container_meta.get('flow_limit_gb', 0)
 
