@@ -129,27 +129,48 @@ function pveserver_CreateAccount($params)
 
     $res = pveserver_JSONCurl($params, $data, 'POST');
 
-    if (isset($res['code']) && $res['code'] == '200') {
-        $update = [
-            'dedicatedip'  => $params['server_ip'],
-            'domainstatus' => 'Active',
-            'username'     => $params['domain'],
-        ];
-        if (!empty($res['data']['ssh_port'])) {
-            $update['port'] = $res['data']['ssh_port'];
-        }
-        if (!empty($res['data']['assigned_ip'])) {
-             $update['dedicatedip'] = $res['data']['assigned_ip'];
-        }
-        try {
-            Db::name('host')->where('id', $params['hostid'])->update($update);
-        } catch (\Exception $e) {
-             return ['status' => 'error', 'msg' => ($res['msg'] ?? '创建成功，但同步数据到面板失败: ' . $e->getMessage())];
-        }
-        return ['status' => 'success', 'msg' => $res['msg'] ?? '创建成功'];
-    } else {
-        return ['status' => 'error', 'msg' => $res['msg'] ?? '创建失败'];
+    if (!isset($res['code']) || $res['code'] != '202' || empty($res['task_id'])) {
+        return ['status' => 'error', 'msg' => $res['msg'] ?? '创建任务提交失败，未返回有效任务ID'];
     }
+
+    $task_id = $res['task_id'];
+    $max_wait_time = 90; 
+    $start_time = time();
+
+    while (time() - $start_time < $max_wait_time) {
+        sleep(5); 
+        $status_res = pveserver_Curl($params, ['url' => '/api/task_status?task_id=' . $task_id], 'GET');
+
+        if (isset($status_res['status'])) {
+            if ($status_res['status'] == 'SUCCESS') {
+                $task_result = $status_res['result'];
+                if (isset($task_result['code']) && $task_result['code'] == 200) {
+                    $update_data = [
+                        'domainstatus' => 'Active',
+                        'username'     => $params['domain'],
+                    ];
+                    if (!empty($task_result['data']['assigned_ip'])) {
+                        $update_data['dedicatedip'] = $task_result['data']['assigned_ip'];
+                    }
+                    if (!empty($task_result['data']['ssh_port'])) {
+                        $update_data['port'] = $task_result['data']['ssh_port'];
+                    }
+                    try {
+                        Db::name('host')->where('id', $params['hostid'])->update($update_data);
+                        return ['status' => 'success', 'msg' => $task_result['msg'] ?? '创建成功'];
+                    } catch (\Exception $e) {
+                        return ['status' => 'error', 'msg' => '创建成功，但更新数据库失败: ' . $e->getMessage()];
+                    }
+                } else {
+                    return ['status' => 'error', 'msg' => '后台任务执行失败: ' . ($task_result['msg'] ?? '未知错误')];
+                }
+            } elseif ($status_res['status'] == 'FAILURE') {
+                return ['status' => 'error', 'msg' => '后台任务执行失败: ' . ($status_res['result'] ?? '未知错误')];
+            }
+        }
+    }
+
+    return ['status' => 'error', 'msg' => '创建超时，请联系管理员检查后台任务状态。任务ID: ' . $task_id];
 }
 
 function pveserver_ClientArea($params)
@@ -189,20 +210,20 @@ function pveserver_AllowFunction()
     return ['client' => ['natadd', 'natdel']];
 }
 
-function pveserver_TerminateAccount($params){ return pveserver_SimpleAction($params, 'delete', '终止');}
-function pveserver_On($params){ return pveserver_SimpleAction($params, 'boot', '开机');}
-function pveserver_Off($params){ return pveserver_SimpleAction($params, 'stop', '关机');}
-function pveserver_Reboot($params){ return pveserver_SimpleAction($params, 'reboot', '重启');}
-
-function pveserver_SimpleAction($params, $action, $action_cn)
+function pveserver_HandleAsyncTask($params, $action, $action_cn)
 {
     $res = pveserver_Curl($params, ['url' => "/api/{$action}?hostname=" . $params['domain']], 'GET');
-    if (isset($res['code']) && $res['code'] == '200') {
-        return ['status' => 'success', 'msg' => $res['msg'] ?? $action_cn . '成功'];
+    if (isset($res['code']) && $res['code'] == '202') {
+        return ['status' => 'success', 'msg' => $action_cn . '任务已提交，正在后台处理'];
     } else {
-        return ['status' => 'error', 'msg' => $res['msg'] ?? $action_cn . '失败'];
+        return ['status' => 'error', 'msg' => $res['msg'] ?? $action_cn . '任务提交失败'];
     }
 }
+
+function pveserver_TerminateAccount($params){ return pveserver_HandleAsyncTask($params, 'delete', '终止');}
+function pveserver_On($params){ return pveserver_HandleAsyncTask($params, 'boot', '开机');}
+function pveserver_Off($params){ return pveserver_HandleAsyncTask($params, 'stop', '关机');}
+function pveserver_Reboot($params){ return pveserver_HandleAsyncTask($params, 'reboot', '重启');}
 
 function pveserver_natadd($params)
 {
@@ -212,10 +233,10 @@ function pveserver_natadd($params)
         'data' => 'hostname=' . urlencode($params['domain']) . '&dtype=' . urlencode($post['dtype']) . '&dport=' . intval($post['dport']) . '&sport=' . intval($post['sport']),
     ];
     $res = pveserver_Curl($params, $data, 'POST');
-    if (isset($res['code']) && $res['code'] == 200) {
-        return ['status' => 'success', 'msg' => $res['msg'] ?? 'NAT转发添加成功'];
+    if (isset($res['code']) && $res['code'] == 202) {
+        return ['status' => 'success', 'msg' => 'NAT转发添加任务已提交'];
     } else {
-        return ['status' => 'error', 'msg' => $res['msg'] ?? 'NAT转发添加失败'];
+        return ['status' => 'error', 'msg' => $res['msg'] ?? 'NAT转发添加任务提交失败'];
     }
 }
 
@@ -227,10 +248,10 @@ function pveserver_natdel($params)
         'data' => 'hostname=' . urlencode($params['domain']) . '&dtype=' . urlencode($post['dtype']) . '&dport=' . intval($post['dport']) . '&sport=' . intval($post['sport']),
     ];
     $res = pveserver_Curl($params, $data, 'POST');
-     if (isset($res['code']) && $res['code'] == 200) {
-        return ['status' => 'success', 'msg' => $res['msg'] ?? 'NAT转发删除成功'];
+     if (isset($res['code']) && $res['code'] == 202) {
+        return ['status' => 'success', 'msg' => 'NAT转发删除任务已提交'];
     } else {
-        return ['status' => 'error', 'msg' => $res['msg'] ?? 'NAT转发删除失败'];
+        return ['status' => 'error', 'msg' => $res['msg'] ?? 'NAT转发删除任务提交失败'];
     }
 }
 
@@ -241,11 +262,11 @@ function pveserver_CrackPassword($params, $new_pass)
         'data' => ['hostname' => $params['domain'], 'password' => $new_pass]
     ];
     $res = pveserver_JSONCurl($params, $data, 'POST');
-    if (isset($res['code']) && $res['code'] == 200) {
+    if (isset($res['code']) && $res['code'] == 202) {
         Db::name('host')->where('id', $params['hostid'])->update(['password' => $new_pass]);
-        return ['status' => 'success', 'msg' => $res['msg'] ?? '密码重置成功'];
+        return ['status' => 'success', 'msg' => '密码重置任务已提交，请稍后尝试新密码'];
     } else {
-        return ['status' => 'error', 'msg' => $res['msg'] ?? '密码重置失败'];
+        return ['status' => 'error', 'msg' => $res['msg'] ?? '密码重置任务提交失败'];
     }
 }
 
@@ -261,10 +282,10 @@ function pveserver_Reinstall($params)
         ]
     ];
     $res = pveserver_JSONCurl($params, $data, 'POST');
-    if (isset($res['code']) && $res['code'] == 200) {
-        return ['status' => 'success', 'msg' => $res['msg'] ?? '重装成功'];
+    if (isset($res['code']) && $res['code'] == 202) {
+        return ['status' => 'success', 'msg' => '重装任务已提交，正在后台处理'];
     } else {
-        return ['status' => 'error', 'msg' => $res['msg'] ?? '重装失败'];
+        return ['status' => 'error', 'msg' => $res['msg'] ?? '重装任务提交失败'];
     }
 }
 

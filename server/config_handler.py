@@ -25,6 +25,9 @@ class AppConfig:
         self.default_template = parser.get('pve', 'DEFAULT_TEMPLATE', fallback=None)
         self.main_interface = parser.get('pve', 'MAIN_INTERFACE', fallback=None)
         self.nat_listen_ip = parser.get('pve', 'NAT_LISTEN_IP', fallback=None)
+        
+        self.celery_broker_url = parser.get('celery', 'BROKER_URL', fallback='redis://127.0.0.1:6379/0')
+        self.celery_result_backend = parser.get('celery', 'RESULT_BACKEND', fallback='redis://127.0.0.1:6379/1')
 
         if not all([self.api_host, self.api_user, self.api_password, self.node, self.storage]):
             raise ValueError("PVE 配置不完整 (API_HOST, API_USER, API_PASSWORD, NODE, STORAGE 都是必需的)")
