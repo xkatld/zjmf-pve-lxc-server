@@ -28,6 +28,11 @@
         padding-top: 50px;
         padding-bottom: 50px;
     }
+    .auto-refresh-countdown {
+        font-size: .9rem;
+        color: #6c757d;
+        margin-top: 10px;
+    }
   </style>
 </head>
 <body class="mdui-theme-layout-auto mdui-typo">
@@ -35,15 +40,18 @@
 <div id="loading-view" class="status-container">
     <div class="loading-spinner"></div>
     <h2 class="mdui-typo-headline mdui-m-t-3" id="status-title">{$title}</h2>
-    <p class="mdui-typo-subheading mdui-m-t-1">请耐心等待，此过程可能需要几分钟，请勿关闭或刷新页面。</p>
+    <p class="mdui-typo-subheading mdui-m-t-1">请耐心等待，此过程可能需要1~3分钟，请勿关闭或刷新页面。</p>
+    <p class="auto-refresh-countdown" id="initial-countdown-message">
+        页面将在 <span id="initial-countdown">30</span> 秒后自动刷新...
+    </p>
 </div>
 
 <div id="result-view" class="status-container" style="display: none;">
     <i id="result-icon" class="mdui-icon material-icons" style="font-size: 56px;"></i>
     <h2 class="mdui-typo-headline mdui-m-t-2" id="result-title"></h2>
     <p class="mdui-typo-subheading mdui-m-t-1" id="result-message"></p>
-    <p class="mdui-typo-body-1 mdui-m-t-2" id="countdown-message" style="display: none;">
-        将在 <span id="countdown">30</span> 秒后自动刷新页面...
+    <p class="mdui-typo-body-1 mdui-m-t-2" id="final-countdown-message" style="display: none;">
+        将在 <span id="final-countdown">30</span> 秒后自动刷新页面...
     </p>
     <button id="reload-button" class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent mdui-m-t-3" onclick="location.reload();">立即刷新</button>
 </div>
@@ -51,21 +59,39 @@
 <script>
   $(document).ready(function() {
     var taskId = '{$task_id}';
-    var pollingInterval = setInterval(checkStatus, 5000);
+    var pollingInterval;
+    var initialCountdownInterval;
+    var finalCountdownInterval;
+
+    var initialCounter = 30;
+    function startInitialCountdown() {
+        $('#initial-countdown-message').show();
+        initialCountdownInterval = setInterval(function() {
+            initialCounter--;
+            $('#initial-countdown').text(initialCounter);
+            if (initialCounter <= 0) {
+                clearInterval(initialCountdownInterval);
+                location.reload();
+            }
+        }, 1000);
+    }
 
     function checkStatus() {
       $.post("{$MODULE_CUSTOM_API}", { func: "checktask" })
         .done(function(data) {
           if (data.status === 'success') {
             clearInterval(pollingInterval);
+            clearInterval(initialCountdownInterval);
             showResult('success', '任务成功', data.msg || '操作已成功完成。');
           } else if (data.status === 'failure') {
             clearInterval(pollingInterval);
+            clearInterval(initialCountdownInterval);
             showResult('error', '任务失败', data.msg || '发生未知错误。');
           }
         })
         .fail(function() {
             clearInterval(pollingInterval);
+            clearInterval(initialCountdownInterval);
             showResult('error', '请求错误', '无法连接到服务器检查任务状态。');
         });
     }
@@ -82,27 +108,32 @@
 
         if(type === 'success') {
             icon.text('check_circle').addClass('mdui-text-color-green');
-        } else {
+        } else if (type === 'error') {
             icon.text('error').addClass('mdui-text-color-red');
+        } else if (type === 'info') {
+            icon.text('info').addClass('mdui-text-color-blue');
         }
 
         $('#result-view').show();
-        startCountdown();
+        startFinalCountdown();
     }
 
-    function startCountdown() {
-        $('#countdown-message').show();
+    function startFinalCountdown() {
+        $('#final-countdown-message').show();
         var counter = 30;
-        var countdownInterval = setInterval(function() {
+        finalCountdownInterval = setInterval(function() {
             counter--;
-            $('#countdown').text(counter);
+            $('#final-countdown').text(counter);
             if (counter <= 0) {
-                clearInterval(countdownInterval);
+                clearInterval(finalCountdownInterval);
                 location.reload();
             }
         }, 1000);
     }
 
+    startInitialCountdown();
+
+    pollingInterval = setInterval(checkStatus, 5000);
     setTimeout(checkStatus, 2000);
   });
 </script>
