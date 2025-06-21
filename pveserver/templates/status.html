@@ -42,7 +42,7 @@
     <h2 class="mdui-typo-headline mdui-m-t-3" id="status-title">{$title}</h2>
     <p class="mdui-typo-subheading mdui-m-t-1">请耐心等待，此过程可能需要1~3分钟，请勿关闭或刷新页面。</p>
     <p class="auto-refresh-countdown" id="initial-countdown-message">
-        页面将在 <span id="initial-countdown">30</span> 秒后自动刷新...
+        页面将在 <span id="initial-countdown">10</span> 秒后自动刷新...
     </p>
 </div>
 
@@ -63,7 +63,7 @@
     var initialCountdownInterval;
     var finalCountdownInterval;
 
-    var initialCounter = 30;
+    var initialCounter = ;
     function startInitialCountdown() {
         $('#initial-countdown-message').show();
         initialCountdownInterval = setInterval(function() {
@@ -120,7 +120,7 @@
 
     function startFinalCountdown() {
         $('#final-countdown-message').show();
-        var counter = 30;
+        var counter = 10;
         finalCountdownInterval = setInterval(function() {
             counter--;
             $('#final-countdown').text(counter);
