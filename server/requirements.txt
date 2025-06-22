@@ -1,4 +1,0 @@
-Flask
-proxmoxer
-configparser
-APScheduler
