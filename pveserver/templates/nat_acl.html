@@ -94,6 +94,71 @@
 .is-invalid ~ .invalid-feedback {
     display: block;
 }
+
+/* --- Pagination Styles --- */
+.table-pagination-container {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: 1.25rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+#rows-per-page {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    border-radius: .2rem;
+    border: 1px solid #d1d3e2;
+    height: auto;
+    width: auto;
+    display: inline-block;
+}
+.pagination {
+    display: flex;
+    padding-left: 0;
+    list-style: none;
+    border-radius: .25rem;
+    margin: 0;
+}
+.page-item .page-link {
+    position: relative;
+    display: block;
+    padding: 0.25rem 0.65rem;
+    font-size: 0.875rem;
+    margin-left: -1px;
+    line-height: 1.5;
+    color: #2f54ea;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    cursor: pointer;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+.page-item.active .page-link {
+    z-index: 1;
+    color: #fff;
+    background-color: #2f54ea;
+    border-color: #2f54ea;
+}
+.page-item.disabled .page-link {
+    color: #6c757d;
+    pointer-events: none;
+    cursor: auto;
+    background-color: #fff;
+    border-color: #dee2e6;
+}
+.page-item:first-child .page-link {
+    margin-left: 0;
+    border-top-left-radius: .2rem;
+    border-bottom-left-radius: .2rem;
+}
+.page-item:last-child .page-link {
+    border-top-right-radius: .2rem;
+    border-bottom-right-radius: .2rem;
+}
 </style>
 
 <div class="card shadow mb-4">
@@ -143,49 +208,53 @@
         </div>
 
         <div class="table-responsive">
-        <table class="table mb-0 mt-3">
-          <thead>
-            <tr>
-              <th>外网端口</th>
-              <th>内网端口</th>
-              <th>协议</th>
-              <th style="width:90px">管理</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {if $list}
-                {foreach $list as $list_item }
+            <table class="table mb-0 mt-3">
+              <thead>
                 <tr>
-                <td>{$list_item.Dport}</td>
-                <td>{$list_item.Sport}</td>
-                <td>{$list_item.Dtype}</td>
-                <td>
-                    <button type="button" class="btn btn-link deleteNATlxdserveracl" data-dtype="{$list_item.Dtype}" data-dport="{$list_item.Dport}" data-sport="{$list_item.Sport}">删除</button>
-                </td>
+                  <th>外网端口</th>
+                  <th>内网端口</th>
+                  <th>协议</th>
+                  <th style="width:90px">管理</th>
                 </tr>
-                {/foreach}
-            {else}
-                <tr>
-                    <td colspan="4" style="text-align:center;">暂无NAT转发规则。</td>
-                </tr>
-            {/if}
-          </tbody>
-        </table>
+              </thead>
+    
+              <tbody id="nat-rules-tbody">
+                {if $list}
+                    {foreach $list as $list_item }
+                    <tr>
+                    <td>{$list_item.Dport}</td>
+                    <td>{$list_item.Sport}</td>
+                    <td>{$list_item.Dtype}</td>
+                    <td>
+                        <button type="button" class="btn btn-link deleteNATlxdserveracl" data-dtype="{$list_item.Dtype}" data-dport="{$list_item.Dport}" data-sport="{$list_item.Sport}">删除</button>
+                    </td>
+                    </tr>
+                    {/foreach}
+                {else}
+                    <tr>
+                        <td colspan="4" style="text-align:center;">暂无NAT转发规则。</td>
+                    </tr>
+                {/if}
+              </tbody>
+            </table>
         </div>
+
+        <div class="table-pagination-container" style="display: none;">
+            <span>显示条数:</span>
+            <select id="rows-per-page" class="form-control" style="border-radius: 4px;">
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+            </select>
+            <nav>
+                <ul class="pagination" id="pagination-controls"></ul>
+            </nav>
+        </div>
+
         <div style="display: none" id="loading-circlelxdserveracl">
           <div class="loading_limit">
             <div class="loading_inner">
-              <div></div>
-              <div></div>
-              <div></div>
-              <div></div>
-              <div></div>
-              <div></div>
-              <div></div>
-              <div></div>
-              <div></div>
-              <div></div>
+              <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
             </div>
           </div>
         </div>
@@ -379,6 +448,74 @@
           }
         })
     });
+
+    // --- Pagination Logic ---
+    var currentPage = 1;
+    var $tableBody = $('#nat-rules-tbody');
+    // Filter out the "no rules" message row
+    var $allRows = $tableBody.find('tr').filter(function() { return $(this).find('td').length > 1; });
+    var totalRows = $allRows.length;
+
+    function setupPagination() {
+        var rowsPerPage = parseInt($('#rows-per-page').val());
+        // Hide controls if not enough rows
+        if (totalRows <= rowsPerPage) {
+            $('.table-pagination-container').hide();
+            $allRows.show(); // Ensure all rows are visible if pagination is not needed
+            return;
+        } else {
+            $('.table-pagination-container').show();
+        }
+
+        var totalPages = Math.ceil(totalRows / rowsPerPage);
+        var $paginationControls = $('#pagination-controls');
+        $paginationControls.empty();
+
+        $paginationControls.append('<li class="page-item" id="prev-page"><a class="page-link">&laquo;</a></li>');
+        for (var i = 1; i <= totalPages; i++) {
+            $paginationControls.append('<li class="page-item page-num" data-page="' + i + '"><a class="page-link">' + i + '</a></li>');
+        }
+        $paginationControls.append('<li class="page-item" id="next-page"><a class="page-link">&raquo;</a></li>');
+
+        showPage(1);
+
+        // Remove previous handlers before attaching new ones
+        $paginationControls.off('click');
+
+        $paginationControls.on('click', '#prev-page', function(e) {
+            if (!$(this).hasClass('disabled')) showPage(currentPage - 1);
+        });
+
+        $paginationControls.on('click', '#next-page', function(e) {
+            if (!$(this).hasClass('disabled')) showPage(currentPage + 1);
+        });
+
+        $paginationControls.on('click', '.page-num', function(e) {
+            showPage(parseInt($(this).data('page')));
+        });
+    }
+
+    function showPage(page) {
+        currentPage = page;
+        var rowsPerPage = parseInt($('#rows-per-page').val());
+        var totalPages = Math.ceil(totalRows / rowsPerPage);
+
+        var start = (page - 1) * rowsPerPage;
+        var end = start + rowsPerPage;
+
+        $allRows.hide().slice(start, end).show();
+
+        $('.page-num').removeClass('active');
+        $('.page-num[data-page="' + page + '"]').addClass('active');
+
+        $('#prev-page').toggleClass('disabled', page === 1);
+        $('#next-page').toggleClass('disabled', page === totalPages);
+    }
+
+    if (totalRows > 0) {
+        setupPagination();
+        $('#rows-per-page').on('change', setupPagination);
+    }
   });
 
   function resetCreateForm() {
