@@ -512,18 +512,22 @@ class PVEManager:
             '-j', 'DNAT', '--to-destination', f"{container_ip}:{sport}",
             '-m', 'comment', '--comment', rule_comment
         ]
-        self._run_shell_command(dnat_del_args)
+        success_dnat, _ = self._run_shell_command(dnat_del_args)
         
         masquerade_del_args = [
             'iptables', '-t', 'nat', '-D', 'POSTROUTING', '-s', container_ip,
             '-o', app_config.main_interface, '-j', 'MASQUERADE',
             '-m', 'comment', '--comment', f'{rule_comment}_masq'
         ]
-        self._run_shell_command(masquerade_del_args)
+        success_masq, _ = self._run_shell_command(masquerade_del_args)
 
         if not from_delete:
             cursor.execute("DELETE FROM nat_rules WHERE rule_id = ?", (rule_comment,))
             conn.commit()
         
         conn.close()
-        return {'code': 200, 'msg': 'NAT规则(iptables)删除尝试完成'}
+
+        if success_dnat or success_masq:
+             return {'code': 200, 'msg': 'NAT规则已成功从iptables和数据库中删除。'}
+        else:
+             return {'code': 200, 'msg': '规则已从数据库移除（iptables中不存在，无需操作）。'}

@@ -104,8 +104,11 @@
 
         <div class="NAT_btn">
           <button type="button" id="toggle-create-form-btn" class="btn btn-primary waves-effect waves-light">创建</button>
-          <button type="button" class="btn btn-info waves-effect waves-light" onclick="location.reload()" style="margin-left: 10px;">刷新数据</button>
-          <div class="table-note">提醒：表格操作后需要手动刷新读取数据。</div>
+          <div class="table-note">
+            {if $msg}
+                提醒：{$msg}
+            {/if}
+          </div>
         </div>
         
         <div id="create-form-wrapper" style="display: none; padding: 1rem 0;">
@@ -151,16 +154,22 @@
           </thead>
 
           <tbody>
-            {foreach $list as $list_item }
-            <tr>
-              <td>{$list_item.Dport}</td>
-              <td>{$list_item.Sport}</td>
-              <td>{$list_item.Dtype}</td>
-              <td>
-                <button type="button" class="btn btn-link deleteNATlxdserveracl" data-id="{$list_item.ID}" onclick="edit(this)">删除</button>
-              </td>
-            </tr>
-            {/foreach}
+            {if $list}
+                {foreach $list as $list_item }
+                <tr>
+                <td>{$list_item.Dport}</td>
+                <td>{$list_item.Sport}</td>
+                <td>{$list_item.Dtype}</td>
+                <td>
+                    <button type="button" class="btn btn-link deleteNATlxdserveracl" data-dtype="{$list_item.Dtype}" data-dport="{$list_item.Dport}" data-sport="{$list_item.Sport}">删除</button>
+                </td>
+                </tr>
+                {/foreach}
+            {else}
+                <tr>
+                    <td colspan="4" style="text-align:center;">暂无NAT转发规则。</td>
+                </tr>
+            {/if}
           </tbody>
         </table>
         </div>
@@ -259,8 +268,6 @@
 };
 </script>
 <script>
-  var dportval, sportval, dtypeval;
-  
   $(document).ready(function(){
       $('#toggle-create-form-btn').on('click', function() {
           $('#create-form-wrapper').slideToggle();
@@ -270,202 +277,123 @@
         callBack: function (val) {
         }
       });
+
+      function handleActionSuccess(message) {
+        Swal.fire({
+            icon: 'success',
+            title: '任务已提交',
+            text: '页面将在3秒后自动刷新以应用更改。',
+            timer: 3000,
+            showConfirmButton: false,
+            allowOutsideClick: false
+        });
+        setTimeout(function() {
+            $('a.nav-link:contains("NAT转发")').click();
+        }, 3000);
+      }
+
+      $('.deleteNATlxdserveracl').on('click', function () {
+        var button = $(this);
+        if (button.prop('disabled')) return;
+
+        var dportval = button.data('dport');
+        var sportval = button.data('sport');
+        var dtypeval = button.data('dtype').toLowerCase();
+
+        Swal.fire({
+          title: '确定删除此转发吗？',
+          text: '外网端口: ' + dportval + ', 内网端口: ' + sportval + ', 协议: ' + dtypeval.toUpperCase(),
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonColor: '#6e9aff',
+          cancelButtonColor: '#d33',
+          confirmButtonText: '确认删除',
+          cancelButtonText: '取消'
+        }).then((result) => {
+          if (result.value) {
+            button.prop('disabled', true).html('删除中...');
+            ajax({
+              type: "post",
+              url: "{$MODULE_CUSTOM_API}",
+              data: { "func": "natdel", "dtype": dtypeval, "dport": dportval, "sport": sportval },
+              success: function (data) {
+                if (data.msg && data.msg.includes('任务已提交')) {
+                  handleActionSuccess();
+                } else {
+                  Swal.fire({ icon: 'error', title: '删除失败', text: data.msg || "操作失败" });
+                  button.prop('disabled', false).html('删除');
+                }
+              },
+              error: function (xhr, err) {
+                Swal.fire({ icon: 'error', title: '请求失败', text: '无法连接到服务器' });
+                button.prop('disabled', false).html('删除');
+              }
+            })
+          }
+        })
+      });
+
+      $('.confirm-btnlxdserveracl').on('click', function () {
+        const externalPort = document.getElementById("dportinput");
+        const internalPort = document.getElementById("sportinput");
+        const externalPortFeedback = document.getElementById("externalPort-feedbacklxdserveracl");
+        const internalPortFeedback = document.getElementById("internalPort-feedbacklxdserveracl");
+        let isValid = true;
+        externalPort.classList.remove("is-invalid");
+        internalPort.classList.remove("is-invalid");
+
+        if (externalPort.value === "" || parseInt(externalPort.value) < 10000 || parseInt(externalPort.value) > 65535) {
+          externalPortFeedback.innerHTML = "请填写有效的外网端口 (10000-65535)";
+          externalPort.classList.add("is-invalid");
+          isValid = false;
+        }
+
+        if (internalPort.value === "" || parseInt(internalPort.value) < 1 || parseInt(internalPort.value) > 65535) {
+          internalPortFeedback.innerHTML = "请填写有效的内网端口 (1-65535)";
+          internalPort.classList.add("is-invalid");
+          isValid = false;
+        }
+        if (!isValid) return;
+
+        var button = $(this);
+        if (button.prop('disabled')) return;
+        button.prop('disabled', true).html('提交中...');
+
+        ajax({
+          type: "post",
+          url: "{$MODULE_CUSTOM_API}",
+          data: $("#create-nat-form").serialize() + "&func=natadd",
+          success: function (data) {
+            if (data.msg && data.msg.includes('任务已提交')) {
+                $('#create-form-wrapper').slideUp();
+                resetCreateForm();
+                handleActionSuccess();
+            } else {
+                Swal.fire({ icon: 'error', title: '创建失败', text: data.msg || "操作失败" });
+                button.prop('disabled', false).html('确定');
+            }
+          },
+          error: function (xhr, err) {
+            Swal.fire({ icon: 'error', title: '请求失败', text: '无法连接到服务器' });
+            button.prop('disabled', false).html('确定');
+          }
+        })
+    });
   });
 
   function resetCreateForm() {
-    const dportInput = document.getElementById("dportinput");
-    const sportInput = document.getElementById("sportinput");
-
-    dportInput.classList.remove("is-valid", "is-invalid");
-    sportInput.classList.remove("is-valid", "is-invalid");
-
     $("#create-nat-form")[0].reset();
+    document.getElementById("dportinput").classList.remove("is-valid", "is-invalid");
+    document.getElementById("sportinput").classList.remove("is-valid", "is-invalid");
     var $selectProtocol = $('.nokvmprotocollxdserveracl');
-    var $options = $selectProtocol.find('select option');
     var defaultText = 'TCP';
     var defaultValue = 'tcp';
-     if ($options.filter('[selected]').length) {
-        defaultText = $options.filter('[selected]').text();
-        defaultValue = $options.filter('[selected]').val();
-    } else if ($options.length) {
-        defaultText = $options.first().text();
-        defaultValue = $options.first().val();
-    }
     $selectProtocol.find('.filter-title').val(defaultText);
     $selectProtocol.find('select').val(defaultValue);
     $selectProtocol.find('.filter-list li').removeClass('filter-selected');
     $selectProtocol.find('.filter-list li[data-value="' + defaultValue + '"]').addClass('filter-selected');
   }
 
-  function edit(val){
-        var value = $(val).closest("tr").find("td");
-        dportval = value.eq(0).text();
-        sportval = value.eq(1).text();
-        dtypeval = value.eq(2).text().toLowerCase();
-  }
-
-  $('.deleteNATlxdserveracl').on('click', function () {
-    if ($(this).data('disabled') == 'true') {
-      return;
-    }
-    var delete_nat_btn = $(this);
-    edit(this);
-
-    Swal.fire({
-      title: '确定删除此转发吗？',
-      text: '外网端口: ' + dportval + ', 内网端口: ' + sportval + ', 协议: ' + dtypeval.toUpperCase(),
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#6e9aff',
-      cancelButtonColor: '#d33',
-      confirmButtonText: '确认删除',
-      cancelButtonText: '取消'
-    }).then((result) => {
-      if (result.value) {
-        delete_nat_btn.html($('#loading-circlelxdserveracl').html());
-        delete_nat_btn.data('disabled', 'true');
-        ajax({
-          type: "post",
-          url: "{$MODULE_CUSTOM_API}",
-          data: { "func": "natdel", "dtype": dtypeval, "dport": dportval, "sport": sportval },
-          success: function (data) {
-            delete_nat_btn.html('删除');
-            delete_nat_btn.data('disabled', 'false');
-
-            const isSpecificDeletionMessage = data.msg === 'NAT规则(iptables)删除尝试完成';
-            const finalTitle = isSpecificDeletionMessage ? 'NAT规则(iptables)删除尝试完成' : (data.msg || '删除成功!');
-
-            if (data.status == 'success' || isSpecificDeletionMessage) {
-              Swal.fire({
-                icon: 'success',
-                title: finalTitle,
-                text: '操作成功，列表数据可能需要手动刷新以查看更新。',
-                showConfirmButton: true,
-                confirmButtonText: 'OK',
-                confirmButtonColor: '#6e9aff'
-              });
-            } else {
-              Swal.fire({
-                icon: 'error',
-                title: '删除失败',
-                text: data.msg || "操作失败",
-                showConfirmButton: true,
-                confirmButtonText: 'OK',
-                confirmButtonColor: '#d33'
-              });
-            }
-          },
-          error: function (xhrStatus, errorData) {
-            delete_nat_btn.html('删除');
-            delete_nat_btn.data('disabled', 'false');
-            var errorMsg = "网络或服务器错误";
-            if(typeof errorData === 'object' && errorData !== null && errorData.msg){
-                errorMsg = errorData.msg;
-            } else if (typeof errorData === 'string' && errorData.length < 200 && errorData.trim() !== ''){
-                errorMsg = errorData;
-            }
-            Swal.fire({
-                icon: 'error',
-                title: '删除失败',
-                text: errorMsg,
-                showConfirmButton: true,
-                confirmButtonText: 'OK',
-                confirmButtonColor: '#d33'
-            });
-          }
-        })
-      }
-    })
-  });
-
-  $('.confirm-btnlxdserveracl').on('click', function () {
-    const externalPort = document.getElementById("dportinput");
-    const internalPort = document.getElementById("sportinput");
-
-    const externalPortFeedback = document.getElementById("externalPort-feedbacklxdserveracl");
-    const internalPortFeedback = document.getElementById("internalPort-feedbacklxdserveracl");
-
-    let isValid = true;
-    
-    externalPort.classList.remove("is-invalid");
-    internalPort.classList.remove("is-invalid");
-
-    if (externalPort.value === "" || parseInt(externalPort.value) < 10000 || parseInt(externalPort.value) > 65535) {
-      externalPortFeedback.innerHTML = "请填写有效的外网端口 (10000-65535)";
-      externalPort.classList.add("is-invalid");
-      isValid = false;
-    }
-
-    if (internalPort.value === "" || parseInt(internalPort.value) < 1 || parseInt(internalPort.value) > 65535) {
-      internalPortFeedback.innerHTML = "请填写有效的内网端口 (1-65535)";
-      internalPort.classList.add("is-invalid");
-      isValid = false;
-    }
-
-    if (!isValid) {
-        return;
-    }
-
-    if (!$(this).data('submit')) {
-      var current_button = $(this);
-      current_button.html($('#loading-circlelxdserveracl').html());
-      current_button.data('submit', 'submit');
-
-      ajax({
-        type: "post",
-        url: "{$MODULE_CUSTOM_API}",
-        data: $("#create-nat-form").serialize() + "&func=natadd",
-        success: function (data) {
-          current_button.html('确认');
-          current_button.data('submit', '');
-
-          const isSpecificCreationSuccessMessage = data.msg === 'NAT规则(iptables)添加成功';
-          const finalCreationTitle = isSpecificCreationSuccessMessage ? 'NAT规则(iptables)添加成功' : (data.msg || '创建成功!');
-
-
-          if (data.status == 'success' || isSpecificCreationSuccessMessage) {
-            $('#create-form-wrapper').slideUp();
-            resetCreateForm();
-            Swal.fire({
-              icon: 'success',
-              title: finalCreationTitle,
-              text: '操作成功，列表数据可能需要手动刷新以查看更新。',
-              showConfirmButton: true,
-              confirmButtonText: 'OK',
-              confirmButtonColor: '#6e9aff'
-            });
-          } else {
-            Swal.fire({
-                icon: 'error',
-                title: '创建失败',
-                text: data.msg || "操作失败",
-                showConfirmButton: true,
-                confirmButtonText: 'OK',
-                confirmButtonColor: '#d33'
-            });
-          }
-        },
-        error: function (xhrStatus, errorData) {
-          current_button.html('确认');
-          current_button.data('submit', '');
-          var errorMsg = "网络或服务器错误";
-            if(typeof errorData === 'object' && errorData !== null && errorData.msg){
-                errorMsg = errorData.msg;
-            } else if (typeof errorData === 'string' && errorData.length < 200 && errorData.trim() !== ''){
-                errorMsg = errorData;
-            }
-          Swal.fire({
-              icon: 'error',
-              title: '创建失败',
-              text: errorMsg,
-              showConfirmButton: true,
-              confirmButtonText: 'OK',
-              confirmButtonColor: '#d33'
-          });
-        }
-      })
-    }
-  });
   function ajax(options) {
     var xhr = new XMLHttpRequest() || new ActiveXObject("Microsoft,XMLHTTP");
     if (typeof (options.data) != 'string') {
@@ -495,7 +423,6 @@
         try {
             d = JSON.parse(d);
         } catch (e) {
-            console.error("JSON Parse Error. Response was: ", xhr.responseText);
             options.error && options.error(xhr.status, 'JSON 解析错误');
             return;
         }
@@ -508,9 +435,7 @@
             if(typeof tempParsed === 'object' && tempParsed !== null) {
                 parsedErrorData = tempParsed;
             }
-        } catch (e) {
-            console.warn("Could not parse error response as JSON. Raw response: ", errorResponseText);
-        }
+        } catch (e) {}
         options.error && options.error(xhr.status, parsedErrorData);
       }
     }
