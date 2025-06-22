@@ -95,7 +95,6 @@
     display: block;
 }
 
-/* --- Pagination Styles --- */
 .table-pagination-container {
     display: flex;
     justify-content: flex-end;
@@ -449,19 +448,16 @@
         })
     });
 
-    // --- Pagination Logic ---
     var currentPage = 1;
     var $tableBody = $('#nat-rules-tbody');
-    // Filter out the "no rules" message row
     var $allRows = $tableBody.find('tr').filter(function() { return $(this).find('td').length > 1; });
     var totalRows = $allRows.length;
 
     function setupPagination() {
         var rowsPerPage = parseInt($('#rows-per-page').val());
-        // Hide controls if not enough rows
         if (totalRows <= rowsPerPage) {
             $('.table-pagination-container').hide();
-            $allRows.show(); // Ensure all rows are visible if pagination is not needed
+            $allRows.show(); 
             return;
         } else {
             $('.table-pagination-container').show();
@@ -479,7 +475,6 @@
 
         showPage(1);
 
-        // Remove previous handlers before attaching new ones
         $paginationControls.off('click');
 
         $paginationControls.on('click', '#prev-page', function(e) {
