@@ -68,6 +68,32 @@
     padding-top: .75rem!important;
     padding-bottom: .75rem!important;
 }
+.horizontal-form-container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 1rem;
+}
+.horizontal-form-container .form-group-item {
+    flex: 1 1 180px;
+    min-width: 150px;
+}
+.horizontal-form-container .form-buttons {
+    align-self: center;
+}
+.horizontal-form-container .selectItem .filter-text, .horizontal-form-container .selectItem .filter-list {
+    width: 100%;
+}
+.invalid-feedback {
+    display: none; 
+    width: 100%;
+    margin-top: .25rem;
+    font-size: .875em;
+    color: #dc3545;
+}
+.is-invalid ~ .invalid-feedback {
+    display: block;
+}
 </style>
 
 <div class="card shadow mb-4">
@@ -77,69 +103,42 @@
     <div class="card-body">
 
         <div class="NAT_btn">
-          <button type="button" class="btn btn-primary waves-effect waves-light" data-toggle="modal" data-target="#addModallxdserveracl">创建</button>
+          <button type="button" id="toggle-create-form-btn" class="btn btn-primary waves-effect waves-light">创建</button>
           <button type="button" class="btn btn-info waves-effect waves-light" onclick="location.reload()" style="margin-left: 10px;">刷新数据</button>
           <div class="table-note">提醒：表格操作后需要手动刷新读取数据。</div>
         </div>
-        <div class="container">
-          <div class="modal fade" id="addModallxdserveracl">
-            <div class="modal-dialog">
-              <div class="modal-content">
-                <div class="modal-header">
-                  <span class="modal-title">创建NAT转发</span>
-                  <button type="button" class="close" data-dismiss="modal" onclick="closeAddModal()">×</button>
-                </div>
-                <div class="modal-body">
-                  <div class="modal_limit">
-                    <div class="modal_main">
-                      <form>
-                        <div class="form-group">
-                          <label for="name">
-                          <div class="form-group">
-                            <label for="externalPort">
-                              <span style="color:#f00">*</span>
-                              外网端口</label>
-                            <input required name="dport" type="number" class="form-control" min="10000" max="65535" id="dportinput" placeholder="请输入外部端口(10000-65535)">
-                            <div class="invalid-feedback" id="externalPort-feedbacklxdserveracl"></div>
-                          </div>
-                          <div class="form-group">
-                            <label for="internalPort">
-                              <span style="color:#f00">*</span>
-                              内网端口</label>
-                            <input required name="sport" type="number" class="form-control" min="1" max="65535"
-                              id="sportinput" placeholder="请输入内部端口(1-65535)">
-                            <div class="invalid-feedback" id="internalPort-feedbacklxdserveracl"></div>
-                          </div>
-                          <div class="form-group">
-                            <label for="nokvmprotocollxdserveracl">
-                              <span style="color:#f00">*</span>
-                              映射类型</label>
-
-                            <div class="selectItem">
-                              <div class="protocol nokvmprotocollxdserveracl">
-                                <div class="filter-text">
-                                  <input class="filter-title" type="text" readonly placeholder="TCP" />
-                                  <i class="icon icon-filter-arrow"></i>
-                                </div>
-                                <select name="dtype">
-                                  <option value="tcp" selected>TCP</option>
-                                  <option value="udp">UDP</option>
-                                </select>
-                              </div>
+        
+        <div id="create-form-wrapper" style="display: none; padding: 1rem 0;">
+            <form id="create-nat-form">
+                <div class="horizontal-form-container">
+                    <div class="form-group-item">
+                        <input required name="dport" type="number" class="form-control" min="10000" max="65535" id="dportinput" placeholder="外网端口 (10000-65535)">
+                        <div class="invalid-feedback" id="externalPort-feedbacklxdserveracl"></div>
+                    </div>
+                    <div class="form-group-item">
+                        <input required name="sport" type="number" class="form-control" min="1" max="65535" id="sportinput" placeholder="内网端口 (1-65535)">
+                        <div class="invalid-feedback" id="internalPort-feedbacklxdserveracl"></div>
+                    </div>
+                    <div class="form-group-item selectItem">
+                        <div class="protocol nokvmprotocollxdserveracl">
+                            <div class="filter-text">
+                                <input class="filter-title" type="text" readonly placeholder="TCP" />
+                                <i class="icon icon-filter-arrow"></i>
                             </div>
-                          </div>
-                      </form>
+                            <select name="dtype">
+                                <option value="tcp" selected>TCP</option>
+                                <option value="udp">UDP</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="modal-footer">
-                      <button type="button" class="btn btn-primary waves-effect waves-light confirm-btnlxdserveracl"
-                        style="margin-left:10px" onclick="checkFormlxdserveracl()">确定</button>
+                    <div class="form-buttons">
+                        <button type="button" class="btn btn-primary waves-effect waves-light confirm-btnlxdserveracl">确定</button>
+                        <button type="button" class="btn btn-secondary waves-effect waves-light" style="margin-left:5px" onclick="$('#toggle-create-form-btn').click(); resetCreateForm();">取消</button>
                     </div>
-                  </div>
                 </div>
-              </div>
-            </div>
-          </div>
+            </form>
         </div>
+
         <div class="table-responsive">
         <table class="table mb-0 mt-3">
           <thead>
@@ -261,25 +260,26 @@
 </script>
 <script>
   var dportval, sportval, dtypeval;
-  $('.nokvmprotocollxdserveracl').selectFilter({
-    callBack: function (val) {
-    }
+  
+  $(document).ready(function(){
+      $('#toggle-create-form-btn').on('click', function() {
+          $('#create-form-wrapper').slideToggle();
+      });
+
+      $('.nokvmprotocollxdserveracl').selectFilter({
+        callBack: function (val) {
+        }
+      });
   });
 
-  function checkFormlxdserveracl() {
-  }
-
-  function closeAddModal() {
+  function resetCreateForm() {
     const dportInput = document.getElementById("dportinput");
     const sportInput = document.getElementById("sportinput");
 
     dportInput.classList.remove("is-valid", "is-invalid");
     sportInput.classList.remove("is-valid", "is-invalid");
 
-    document.getElementById("externalPort-feedbacklxdserveracl").innerHTML = "";
-    document.getElementById("internalPort-feedbacklxdserveracl").innerHTML = "";
-
-    $("#addModallxdserveracl").find("form")[0].reset();
+    $("#create-nat-form")[0].reset();
     var $selectProtocol = $('.nokvmprotocollxdserveracl');
     var $options = $selectProtocol.find('select option');
     var defaultText = 'TCP';
@@ -386,25 +386,20 @@
     const internalPortFeedback = document.getElementById("internalPort-feedbacklxdserveracl");
 
     let isValid = true;
+    
+    externalPort.classList.remove("is-invalid");
+    internalPort.classList.remove("is-invalid");
 
     if (externalPort.value === "" || parseInt(externalPort.value) < 10000 || parseInt(externalPort.value) > 65535) {
       externalPortFeedback.innerHTML = "请填写有效的外网端口 (10000-65535)";
-      externalPort.classList.remove("is-valid");
       externalPort.classList.add("is-invalid");
       isValid = false;
-    } else {
-      externalPort.classList.remove("is-invalid");
-      externalPortFeedback.innerHTML = "";
     }
 
     if (internalPort.value === "" || parseInt(internalPort.value) < 1 || parseInt(internalPort.value) > 65535) {
       internalPortFeedback.innerHTML = "请填写有效的内网端口 (1-65535)";
-      internalPort.classList.remove("is-valid");
       internalPort.classList.add("is-invalid");
       isValid = false;
-    } else {
-      internalPort.classList.remove("is-invalid");
-      internalPortFeedback.innerHTML = "";
     }
 
     if (!isValid) {
@@ -419,7 +414,7 @@
       ajax({
         type: "post",
         url: "{$MODULE_CUSTOM_API}",
-        data: $("#addModallxdserveracl").find("form").serialize() + "&func=natadd",
+        data: $("#create-nat-form").serialize() + "&func=natadd",
         success: function (data) {
           current_button.html('确认');
           current_button.data('submit', '');
@@ -429,8 +424,8 @@
 
 
           if (data.status == 'success' || isSpecificCreationSuccessMessage) {
-            $("#addModallxdserveracl").modal('hide');
-            closeAddModal();
+            $('#create-form-wrapper').slideUp();
+            resetCreateForm();
             Swal.fire({
               icon: 'success',
               title: finalCreationTitle,
