@@ -181,7 +181,13 @@ function pveserver_ClientAreaOutput($params, $key)
             } else {
                 $res['data']['TotalDiskGB'] = '0.00';
             }
-            return ['template' => 'templates/info.html', 'vars' => ['data' => $res['data']]];
+            return [
+                'template' => 'templates/info.html', 
+                'vars' => [
+                    'data' => $res['data'],
+                    'PublicIP' => $params['server_ip']
+                ]
+            ];
         }
         return ['template' => 'templates/error.html', 'vars' => ['msg' => $res['msg'] ?? '获取信息失败']];
     } elseif ($key == 'nat_acl') {
@@ -222,9 +228,11 @@ function pveserver_checktask($params)
             try {
                 $update_data = ['notes' => ''];
                 if ($task_type === 'CREATING') {
-                     $update_data['domainstatus'] = 'Active';
+                    $update_data['domainstatus'] = 'Active';
+                    $update_data['dedicatedip'] = $params['server_ip'];
+
                     if (!empty($task_result['data']['assigned_ip'])) {
-                        $update_data['dedicatedip'] = $task_result['data']['assigned_ip'];
+                        $update_data['assignedips'] = $task_result['data']['assigned_ip'];
                     }
                     if (!empty($task_result['data']['ssh_port'])) {
                         $update_data['port'] = $task_result['data']['ssh_port'];

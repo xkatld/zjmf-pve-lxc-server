@@ -119,17 +119,17 @@
 
 <div class="card shadow mb-4">
     <div class="card-header py-3">
-        <h6 class="m-0 font-weight-bold text-primary">使用提示</h6>
+        <h6 class="m-0 font-weight-bold text-primary">网络和提示</h6>
     </div>
     <div class="card-body">
         <ul>
-    <br/>
-    - 1. 您的初始密码已在开通时设置，可直接用于登录。
-    <br/>
-    - 2. 部分操作(如创建、重装)响应较慢，请耐心等待，不要离开页面。
-    <br/>  
-    - 3. 创建、重装后SSH端口转发已自动为您重新配置。
-    <br/>
+            <li><b>公网IP地址:</b> {$PublicIP}</li>
+            <li><b>内网IP地址:</b> {$data.IP}</li>
+            <br>
+            - 所有端口转发规则都基于此公网IP。
+            <br>
+            - 您的初始SSH端口已自动映射，请在产品详情页查看。
+            - 部分操作(如创建、重装)响应较慢，请耐心等待，不要离开页面。
         </ul>
     </div>
 </div>
