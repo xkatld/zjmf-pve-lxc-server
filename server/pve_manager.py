@@ -7,13 +7,15 @@ import os
 import random
 import time
 import math
+import datetime
+from dateutil.relativedelta import relativedelta
 
 logger = logging.getLogger(__name__)
 
 LOCAL_DB_FILE = 'pve_local_data.db'
 
 def get_db_connection():
-    conn = sqlite3.connect(LOCAL_DB_FILE)
+    conn = sqlite3.connect(LOCAL_DB_FILE, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -21,6 +23,7 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # 改造：为 containers 表增加流量和计费周期字段
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS containers (
             vmid INTEGER PRIMARY KEY,
@@ -31,9 +34,12 @@ def init_db():
             disk INTEGER,
             os TEXT,
             nat_acl_limit INTEGER,
-            flow_limit_gb INTEGER,
+            flow_limit_gb REAL,
             ssh_port INTEGER,
-            owner TEXT
+            owner TEXT,
+            traffic_used_this_cycle_gb REAL DEFAULT 0,
+            last_traffic_snapshot_bytes REAL DEFAULT 0,
+            next_reset_date TEXT
         )
     ''')
 
@@ -47,6 +53,15 @@ def init_db():
             container_ip TEXT NOT NULL
         )
     ''')
+    
+    # 兼容旧数据库，为已有表添加新字段
+    try:
+        cursor.execute('ALTER TABLE containers ADD COLUMN traffic_used_this_cycle_gb REAL DEFAULT 0')
+        cursor.execute('ALTER TABLE containers ADD COLUMN last_traffic_snapshot_bytes REAL DEFAULT 0')
+        cursor.execute('ALTER TABLE containers ADD COLUMN next_reset_date TEXT')
+        logger.info("成功为旧的 containers 表添加了新的流量控制字段。")
+    except sqlite3.OperationalError:
+        pass # 字段已存在
 
     conn.commit()
     conn.close()
@@ -142,56 +157,40 @@ class PVEManager:
         conn.close()
         return dict(container_meta) if container_meta else None
 
-    def get_container_info(self, hostname):
-        ct = self._get_container_or_error(hostname)
-        if not ct:
-            return {'code': 404, 'msg': '容器未找到'}
-        vmid = self._find_vmid_by_hostname(hostname)
+    def get_container_info(self, hostname, from_pve_api=False):
         metadata = self._get_container_metadata_from_db(hostname)
         if not metadata:
             return {'code': 404, 'msg': '在本地数据库中未找到容器元数据'}
+
+        ct = self._get_container_or_error(hostname)
+        if not ct:
+            return {'code': 404, 'msg': '容器在PVE节点上未找到'}
+
         try:
             status = ct.status.current.get()
             config = ct.config.get()
-            cpu_cores = int(config.get('cores', 1))
-            cpu_percent = round(status.get('cpu', 0) * 100, 2)
-            total_ram_mb = int(config.get('memory', 128))
-            used_ram_mb = math.ceil(status.get('mem', 0) / (1024*1024))
-            total_disk_mb = metadata.get('disk', 1024)
-            used_disk_mb = 0
-            try:
-                if vmid and status.get('status') == 'running':
-                    df_command = ['pct', 'exec', str(vmid), '--', 'df', '-m', '/']
-                    success_df, output_df = self._run_shell_command(df_command, timeout=10)
-                    if success_df and output_df:
-                        lines = output_df.strip().split('\n')
-                        if len(lines) > 1:
-                            parts = lines[1].split()
-                            if len(parts) >= 3:
-                                used_disk_mb = int(parts[2])
-                    else:
-                        logger.warning(f"df 命令执行失败或无输出. stderr: {output_df}")
-                else:
-                    logger.warning(f"容器 {hostname} 未运行或未找到VMID，无法执行df")
-            except Exception as e:
-                logger.error(f"执行df命令时发生异常 for {hostname}: {e}", exc_info=True)
-            if used_disk_mb == 0:
-                logger.warning(f"pct exec df 失败, 回退到API获取磁盘使用情况 for {hostname}")
-                used_disk_mb = math.ceil(status.get('disk', 0) / (1024*1024))
-            status_map = {'running': 'running', 'stopped': 'stop'}
+            
             pve_raw_status = status.get('status', 'unknown').lower()
-            lxc_status = status_map.get(pve_raw_status, 'unknown')
+            lxc_status = {'running': 'running', 'stopped': 'stop'}.get(pve_raw_status, 'unknown')
+            
+            # 改造: 返回给前端的流量信息，使用数据库中的持久化数据
+            used_flow_gb = round(metadata.get('traffic_used_this_cycle_gb', 0), 2)
             flow_limit_gb = metadata.get('flow_limit_gb', 0)
-            bytes_total = status.get('netin', 0) + status.get('netout', 0)
-            used_flow_gb = round(bytes_total / (1024*1024*1024), 2)
+            
             data = {
-                'Hostname': hostname, 'Status': lxc_status,
-                'UsedCPU': cpu_percent, 'CPUCores': cpu_cores,
-                'TotalRam': total_ram_mb, 'UsedRam': used_ram_mb,
-                'TotalDisk': total_disk_mb, 'UsedDisk': used_disk_mb,
+                'Hostname': hostname, 
+                'Status': lxc_status,
+                'UsedCPU': round(status.get('cpu', 0) * 100, 2),
+                'CPUCores': int(config.get('cores', 1)),
+                'TotalRam': int(config.get('memory', 128)),
+                'UsedRam': math.ceil(status.get('mem', 0) / (1024*1024)),
+                'TotalDisk': metadata.get('disk', 1024),
+                'UsedDisk': math.ceil(status.get('disk', 0) / (1024*1024)),
                 'IP': self._get_container_ip(ct) or 'N/A',
-                'Bandwidth': flow_limit_gb, 'UseBandwidth': used_flow_gb,
+                'Bandwidth': flow_limit_gb, 
+                'UseBandwidth': used_flow_gb, # 使用数据库数据
                 'ImageSourceAlias': config.get('ostype'),
+                'TotalBytes': status.get('netin', 0) + status.get('netout', 0) # 内部使用，用于计算增量
             }
             return {'code': 200, 'msg': '获取成功', 'data': data}
         except Exception as e:
@@ -207,9 +206,9 @@ class PVEManager:
         self._run_shell_command(chpasswd_full_cmd)
         logger.info(f"成功为容器 {vmid} 创建了普通用户 {username}。")
 
-    def create_container(self, params, ssh_port_override=None):
+    def create_container(self, params, ssh_port_override=None, preserved_traffic_data=None):
         hostname = params.get('hostname')
-        if self._find_vmid_by_hostname(hostname):
+        if self._find_vmid_by_hostname(hostname) and not preserved_traffic_data:
             return {'code': 409, 'msg': '容器主机名已存在'}
         vmid = self._get_next_vmid()
         ip_template = params.get('ip_template_v4')
@@ -243,16 +242,35 @@ class PVEManager:
             self._setup_new_user(vmid, hostname, params.get('password'))
             ssh_port = ssh_port_override if ssh_port_override is not None else random.randint(10000, 65535)
             
+            # 改造: 计算下一个重置日期
+            next_reset_date = (datetime.date.today() + relativedelta(months=1)).strftime('%Y-%m-%d')
+
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO containers (vmid, hostname, ip, cpu, ram, disk, os, nat_acl_limit, flow_limit_gb, ssh_port, owner)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                vmid, hostname, assigned_ip, int(params.get('cpu', 1)), int(params.get('ram', 128)),
-                disk_size_mb, params.get('system') or app_config.default_template,
-                int(params.get('ports', 0)), int(params.get('bandwidth', 0)), ssh_port, 'zjmf'
-            ))
+
+            if preserved_traffic_data: # 这是重装流程
+                cursor.execute('''
+                    INSERT INTO containers (vmid, hostname, ip, cpu, ram, disk, os, nat_acl_limit, flow_limit_gb, ssh_port, owner, traffic_used_this_cycle_gb, last_traffic_snapshot_bytes, next_reset_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    vmid, hostname, assigned_ip, int(params.get('cpu', 1)), int(params.get('ram', 128)),
+                    disk_size_mb, params.get('system') or app_config.default_template,
+                    int(params.get('ports', 0)), float(params.get('bandwidth', 0)), ssh_port, 'zjmf',
+                    preserved_traffic_data['traffic_used_this_cycle_gb'], 
+                    0, # 重装后，快照清零
+                    preserved_traffic_data['next_reset_date']
+                ))
+                logger.info(f"重装容器 {hostname}: 已保留旧的流量周期数据。")
+            else: # 这是全新创建流程
+                cursor.execute('''
+                    INSERT INTO containers (vmid, hostname, ip, cpu, ram, disk, os, nat_acl_limit, flow_limit_gb, ssh_port, owner, next_reset_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    vmid, hostname, assigned_ip, int(params.get('cpu', 1)), int(params.get('ram', 128)),
+                    disk_size_mb, params.get('system') or app_config.default_template,
+                    int(params.get('ports', 0)), float(params.get('bandwidth', 0)), ssh_port, 'zjmf', next_reset_date
+                ))
+
             conn.commit()
             conn.close()
 
@@ -260,7 +278,7 @@ class PVEManager:
                 add_rule_result = self.add_nat_rule_via_iptables(hostname, 'tcp', str(ssh_port), '22')
                 if add_rule_result['code'] != 200:
                     logger.error(f"为容器 {hostname} 自动添加 SSH NAT 规则失败: {add_rule_result['msg']}")
-                    ssh_port = 0
+                    ssh_port = 0 # 表示添加失败
             except Exception as e_ssh_nat:
                 logger.error(f"为容器 {hostname} 自动添加 SSH NAT 规则时发生异常: {str(e_ssh_nat)}", exc_info=True)
             return {'code': 200, 'msg': '容器创建成功', 'data': {'ssh_port': ssh_port, 'assigned_ip': assigned_ip}}
@@ -271,7 +289,16 @@ class PVEManager:
     def delete_container(self, hostname):
         vmid = self._find_vmid_by_hostname(hostname)
         if not vmid:
-            return {'code': 404, 'msg': '容器未找到'}
+            # 容器可能已在PVE上被删除，但数据库记录还在，这里做兼容
+            logger.warning(f"请求删除的容器 {hostname} 在PVE上未找到，将仅清理数据库记录。")
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM containers WHERE hostname = ?", (hostname,))
+            cursor.execute("DELETE FROM nat_rules WHERE hostname = ?", (hostname,))
+            conn.commit()
+            conn.close()
+            return {'code': 200, 'msg': '容器在PVE上不存在，已清理数据库记录'}
+
         try:
             logger.info(f"开始删除容器 {hostname} (VMID: {vmid})")
             
@@ -384,6 +411,7 @@ class PVEManager:
     def reinstall_container(self, hostname, new_os_alias, new_password):
         old_metadata = self._get_container_metadata_from_db(hostname)
         if not old_metadata: return {'code': 404, 'msg': '在本地数据库中未找到要重装的容器'}
+        
         try:
             ct_old = self._get_container_or_error(hostname)
             old_config = ct_old.config.get()
@@ -392,7 +420,15 @@ class PVEManager:
             if 'rate=' in net0:
                 rate_str = [p for p in net0.split(',') if p.startswith('rate=')][0]
                 rate_mbps = int(rate_str.replace('rate=', ''))
+            
             preserved_ssh_port = old_metadata.get('ssh_port')
+            
+            # 改造: 打包需要保留的流量和周期数据
+            preserved_traffic_data = {
+                'traffic_used_this_cycle_gb': old_metadata.get('traffic_used_this_cycle_gb', 0),
+                'next_reset_date': old_metadata.get('next_reset_date')
+            }
+
             params_for_create = {
                 'hostname': hostname, 'password': new_password,
                 'cpu': old_metadata.get('cpu'), 'ram': old_metadata.get('ram'),
@@ -404,16 +440,22 @@ class PVEManager:
                 'ip_cidr_prefix_v4': net0.split('/')[1].split(',')[0],
                 'gateway_v4': [p.replace('gw=', '') for p in net0.split(',') if p.startswith('gw=')][0],
             }
+            
+            # 先删除旧容器
             self.delete_container(hostname)
-            time.sleep(5)
-            reinstall_result = self.create_container(params_for_create, ssh_port_override=preserved_ssh_port)
+            time.sleep(5) 
+            
+            # 再创建新容器，并传入需要保留的数据
+            reinstall_result = self.create_container(params_for_create, ssh_port_override=preserved_ssh_port, preserved_traffic_data=preserved_traffic_data)
+            
             if reinstall_result.get('code') == 200:
                 reinstall_result['msg'] = '容器重装成功'
+            
             return reinstall_result
         except Exception as e:
             logger.error(f"重装容器 {hostname} 时发生错误: {e}", exc_info=True)
             return {'code': 500, 'msg': f'重装容器时发生错误: {e}'}
-
+    # ... (NAT相关函数无需修改, 保持原样)
     def list_nat_rules(self, hostname):
         conn = get_db_connection()
         cursor = conn.cursor()
