@@ -57,4 +57,5 @@ apt install wget curl sudo git screen nano unzip iptables-persistent iptables -y
 apt install python3-pip python3 -y
 rm /usr/lib/python3.11/EXTERNALLY-MANAGED
 pip3 install -r requirements.txt
+celery -A tasks.celery_app worker --loglevel=DEBUG
 ```
