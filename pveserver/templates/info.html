@@ -123,8 +123,14 @@
     </div>
     <div class="card-body">
         <ul>
-            <li><b>公网IP地址:</b> {$PublicIP}</li>
-            <li><b>内网IP地址:</b> {$data.IP}</li>
+            <li><b>公网IP地址 (NAT):</b> {$PublicIP}</li>
+            <li><b>内网IPv4地址:</b> {$data.IP}</li>
+            {if $data.IPv6_Main && $data.IPv6_Main != 'N/A'}
+            <li><b>公网IPv6地址:</b> {$data.IPv6_Display}</li>
+            {/if}
+            {if $data.IPv6_Display && $data.IPv6_Display != 'N/A'}
+            <li><b>内网IPv6地址:</b> {$data.IPv6_Main}</li>
+            {/if}
             <br>
             - 所有端口转发规则都基于此公网IP。
             <br>

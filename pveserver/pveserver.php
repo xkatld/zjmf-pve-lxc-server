@@ -82,6 +82,30 @@ function pveserver_ConfigOptions()
             'name'        => '网关 (IPv4)',
             'description' => '必填。e.g., 192.168.1.1',
             'key'         => 'gateway_v4',
+        ],
+        [
+            'type'        => 'text',
+            'name'        => 'IP地址模板 (IPv6)',
+            'description' => '选填。e.g., 2409:8a55:460:3d11::{vmid}',
+            'key'         => 'ip_template_v6',
+        ],
+        [
+            'type'        => 'text',
+            'name'        => 'CIDR前缀 (IPv6)',
+            'description' => '选填。e.g., 64',
+            'key'         => 'ip_cidr_prefix_v6',
+        ],
+        [
+            'type'        => 'text',
+            'name'        => '网关 (IPv6)',
+            'description' => '选填。e.g., 2409:8a55:460:3d11::1',
+            'key'         => 'gateway_v6',
+        ],
+        [
+            'type'        => 'text',
+            'name'        => '仅显示的IPv6地址模板',
+            'description' => '选填, 用于显示额外IPv6地址, e.g., 2a11:6c7:f03:cc::{vmid}',
+            'key'         => 'ipv6_display_only_template',
         ]
     ];
 }
@@ -107,19 +131,23 @@ function pveserver_CreateAccount($params)
 {
     $config = $params['configoptions'];
     $payload = [
-        'hostname'          => $params['domain'],
-        'password'          => $params['password'] ?? randStr(8),
-        'cpu'               => $config['CPU'] ?? 1,
-        'disk'              => $config['Disk Space'] ?? 1024,
-        'ram'               => $config['Memory'] ?? 128,
-        'system'            => $config['os'] ?? '',
-        'up'                => $config['net_limit'] ?? 10,
-        'down'              => $config['net_limit'] ?? 10,
-        'ports'             => (int)($config['nat_acl_limit'] ?? 2),
-        'bandwidth'         => (int)($config['flow_limit'] ?? 0),
-        'ip_template_v4'    => $config['ip_template_v4'] ?? '',
-        'ip_cidr_prefix_v4' => $config['ip_cidr_prefix_v4'] ?? '',
-        'gateway_v4'        => $config['gateway_v4'] ?? '',
+        'hostname'                 => $params['domain'],
+        'password'                 => $params['password'] ?? randStr(8),
+        'cpu'                      => $config['CPU'] ?? 1,
+        'disk'                     => $config['Disk Space'] ?? 1024,
+        'ram'                      => $config['Memory'] ?? 128,
+        'system'                   => $config['os'] ?? '',
+        'up'                       => $config['net_limit'] ?? 10,
+        'down'                     => $config['net_limit'] ?? 10,
+        'ports'                    => (int)($config['nat_acl_limit'] ?? 2),
+        'bandwidth'                => (int)($config['flow_limit'] ?? 0),
+        'ip_template_v4'           => $config['ip_template_v4'] ?? '',
+        'ip_cidr_prefix_v4'        => $config['ip_cidr_prefix_v4'] ?? '',
+        'gateway_v4'               => $config['gateway_v4'] ?? '',
+        'ip_template_v6'           => $config['ip_template_v6'] ?? '',
+        'ip_cidr_prefix_v6'        => $config['ip_cidr_prefix_v6'] ?? '',
+        'gateway_v6'               => $config['gateway_v6'] ?? '',
+        'ipv6_display_only_template' => $config['ipv6_display_only_template'] ?? '',
     ];
 
     $data = [

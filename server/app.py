@@ -2,6 +2,7 @@ import os
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 from functools import wraps
 import logging
+from datetime import datetime
 
 from config_handler import app_config
 from pve_manager import PVEManager
@@ -12,6 +13,7 @@ from tasks import (
     reinstall_container_task, add_nat_rule_task, delete_nat_rule_task
 )
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.secret_key = os.urandom(24)
@@ -21,11 +23,12 @@ logging.basicConfig(level=getattr(logging, app_config.log_level, logging.INFO),
                     datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-pve_manager_for_sync_calls = None
-try:
-    pve_manager_for_sync_calls = PVEManager()
-except RuntimeError as e:
-    logger.critical(f"无法连接到PVE，同步调用功能将不可用。错误: {e}")
+def get_pve_manager_for_sync():
+    try:
+        return PVEManager()
+    except RuntimeError as e:
+        logger.critical(f"无法连接到PVE，同步调用功能将不可用。错误: {e}")
+        return None
 
 def api_key_required(f):
     @wraps(f)
@@ -62,10 +65,11 @@ def task_status():
 @api_key_required
 def api_check():
     logger.info(f"API /api/check a called successfully from {request.remote_addr}")
-    if not pve_manager_for_sync_calls:
-        return jsonify({'code': 500, 'msg': 'PVE管理器未初始化'})
+    pve_manager = get_pve_manager_for_sync()
+    if not pve_manager:
+        return jsonify({'code': 500, 'msg': 'PVE管理器未初始化或无法连接'})
     try:
-        pve_manager_for_sync_calls.proxmox.version.get()
+        pve_manager.proxmox.version.get()
         return jsonify({'code': 200, 'msg': 'PVE API连接正常'})
     except Exception as e:
         return jsonify({'code': 500, 'msg': f'PVE API连接失败: {e}'})
@@ -75,16 +79,18 @@ def api_check():
 def api_getinfo():
     hostname = request.args.get('hostname')
     if not hostname: return jsonify({'code': 400, 'msg': '缺少hostname参数'}), 400
-    if not pve_manager_for_sync_calls: return jsonify({'code': 500, 'msg': 'PVE管理器未初始化'})
-    return jsonify(pve_manager_for_sync_calls.get_container_info(hostname))
+    pve_manager = get_pve_manager_for_sync()
+    if not pve_manager: return jsonify({'code': 500, 'msg': 'PVE管理器未初始化或无法连接'})
+    return jsonify(pve_manager.get_container_info(hostname))
 
 @app.route('/api/natlist', methods=['GET'])
 @api_key_required
 def api_natlist():
     hostname = request.args.get('hostname')
     if not hostname: return jsonify({'code': 400, 'msg': '缺少hostname参数'}), 400
-    if not pve_manager_for_sync_calls: return jsonify({'code': 500, 'msg': 'PVE管理器未初始化'})
-    return jsonify(pve_manager_for_sync_calls.list_nat_rules(hostname))
+    pve_manager = get_pve_manager_for_sync()
+    if not pve_manager: return jsonify({'code': 500, 'msg': 'PVE管理器未初始化或无法连接'})
+    return jsonify(pve_manager.list_nat_rules(hostname))
 
 @app.route('/api/create', methods=['POST'])
 @api_key_required
@@ -167,10 +173,13 @@ def api_delport():
 
 if __name__ == '__main__':
     scheduler = BackgroundScheduler(daemon=True)
-    scheduler.add_job(check_traffic_and_suspend, 'interval', hours=1)
-    scheduler.add_job(reset_and_reactivate, 'cron', hour=0, minute=5)
+    # 改造1：流量检查任务，每5分钟执行一次
+    scheduler.add_job(check_traffic_and_suspend, 'interval', minutes=5)
+    # 改造2：流量重置和开机任务，每天凌晨0点5分执行
+    scheduler.add_job(reset_and_reactivate, CronTrigger(hour=0, minute=5))
     scheduler.start()
-    logger.info("APScheduler 流量监控任务已启动。")
+    
+    logger.info("APScheduler 流量监控和重置任务已启动。")
     logger.info(f"启动PVE网页管理器，监听端口: {app_config.http_port}")
     
     app.run(host='0.0.0.0', port=app_config.http_port, debug=(app_config.log_level == 'DEBUG'), use_reloader=False)
