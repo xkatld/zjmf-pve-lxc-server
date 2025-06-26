@@ -23,12 +23,12 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # 改造：为 containers 表增加流量和计费周期字段
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS containers (
             vmid INTEGER PRIMARY KEY,
             hostname TEXT NOT NULL UNIQUE,
             ip TEXT,
+            ip_v6_display TEXT,
             cpu INTEGER,
             ram INTEGER,
             disk INTEGER,
@@ -54,14 +54,18 @@ def init_db():
         )
     ''')
     
-    # 兼容旧数据库，为已有表添加新字段
+    try:
+        cursor.execute('ALTER TABLE containers ADD COLUMN ip_v6_display TEXT')
+        logger.info("成功为 containers 表添加了 ip_v6_display 字段。")
+    except sqlite3.OperationalError:
+        pass
+
     try:
         cursor.execute('ALTER TABLE containers ADD COLUMN traffic_used_this_cycle_gb REAL DEFAULT 0')
         cursor.execute('ALTER TABLE containers ADD COLUMN last_traffic_snapshot_bytes REAL DEFAULT 0')
         cursor.execute('ALTER TABLE containers ADD COLUMN next_reset_date TEXT')
-        logger.info("成功为旧的 containers 表添加了新的流量控制字段。")
     except sqlite3.OperationalError:
-        pass # 字段已存在
+        pass 
 
     conn.commit()
     conn.close()
@@ -110,16 +114,22 @@ class PVEManager:
         except Exception:
             return None
 
-    def _get_container_ip(self, container_resource):
+    def _get_container_ip(self, container_resource, ip_type='ipv4'):
         try:
             config = container_resource.config.get()
-            net0 = config.get('net0')
-            if net0 and 'ip=' in net0 and not 'ip=dhcp' in net0:
-                parts = net0.split(',')
+            if ip_type == 'ipv4':
+                net_interface = config.get('net0')
+                ip_prefix = 'ip='
+            else: # ipv6
+                net_interface = config.get('net1')
+                ip_prefix = 'ip6='
+
+            if net_interface and ip_prefix in net_interface and not 'dhcp' in net_interface:
+                parts = net_interface.split(',')
                 for part in parts:
-                    if part.startswith('ip='):
-                        ip = part.split('/')[0].replace('ip=', '')
-                        logger.debug(f"从静态配置中解析到IP: {ip}")
+                    if part.startswith(ip_prefix):
+                        ip = part.split('/')[0].replace(ip_prefix, '')
+                        logger.debug(f"从静态配置中解析到IP ({ip_type}): {ip}")
                         return ip
         except Exception:
             pass
@@ -173,7 +183,6 @@ class PVEManager:
             pve_raw_status = status.get('status', 'unknown').lower()
             lxc_status = {'running': 'running', 'stopped': 'stop'}.get(pve_raw_status, 'unknown')
             
-            # 改造: 返回给前端的流量信息，使用数据库中的持久化数据
             used_flow_gb = round(metadata.get('traffic_used_this_cycle_gb', 0), 2)
             flow_limit_gb = metadata.get('flow_limit_gb', 0)
             
@@ -186,11 +195,13 @@ class PVEManager:
                 'UsedRam': math.ceil(status.get('mem', 0) / (1024*1024)),
                 'TotalDisk': metadata.get('disk', 1024),
                 'UsedDisk': math.ceil(status.get('disk', 0) / (1024*1024)),
-                'IP': self._get_container_ip(ct) or 'N/A',
+                'IP': self._get_container_ip(ct, 'ipv4') or 'N/A',
+                'IPv6_Main': self._get_container_ip(ct, 'ipv6') or 'N/A',
+                'IPv6_Display': metadata.get('ip_v6_display', 'N/A'),
                 'Bandwidth': flow_limit_gb, 
-                'UseBandwidth': used_flow_gb, # 使用数据库数据
+                'UseBandwidth': used_flow_gb,
                 'ImageSourceAlias': config.get('ostype'),
-                'TotalBytes': status.get('netin', 0) + status.get('netout', 0) # 内部使用，用于计算增量
+                'TotalBytes': status.get('netin', 0) + status.get('netout', 0)
             }
             return {'code': 200, 'msg': '获取成功', 'data': data}
         except Exception as e:
@@ -211,25 +222,49 @@ class PVEManager:
         if self._find_vmid_by_hostname(hostname) and not preserved_traffic_data:
             return {'code': 409, 'msg': '容器主机名已存在'}
         vmid = self._get_next_vmid()
-        ip_template = params.get('ip_template_v4')
-        cidr_prefix = params.get('ip_cidr_prefix_v4')
-        gateway = params.get('gateway_v4')
-        if not all([ip_template, cidr_prefix, gateway]):
-            return {'code': 400, 'msg': '静态IP模式缺少必要的网络参数'}
-        assigned_ip = ip_template.replace('{vmid}', str(vmid))
-        net_config = f"name=eth0,bridge={app_config.bridge},ip={assigned_ip}/{cidr_prefix},gw={gateway}"
+        ip_template_v4 = params.get('ip_template_v4')
+        cidr_prefix_v4 = params.get('ip_cidr_prefix_v4')
+        gateway_v4 = params.get('gateway_v4')
+
+        if not all([ip_template_v4, cidr_prefix_v4, gateway_v4]):
+            return {'code': 400, 'msg': '静态IP模式缺少必要的IPv4网络参数'}
+        
+        assigned_ip_v4 = ip_template_v4.replace('{vmid}', str(vmid))
+        net_config_v4 = f"name=eth0,bridge={app_config.bridge},ip={assigned_ip_v4}/{cidr_prefix_v4},gw={gateway_v4}"
         if params.get('up') and params.get('down'):
             rate_mbps = min(int(float(params.get('up'))), int(float(params.get('down'))))
-            net_config += f",rate={rate_mbps}"
-        disk_size_mb = int(params.get('disk', 1024))
-        disk_size_gb = math.ceil(disk_size_mb / 1024)
+            net_config_v4 += f",rate={rate_mbps}"
+
         create_params = {
             'vmid': vmid, 'hostname': hostname, 'password': params.get('password'),
             'ostemplate': params.get('system') or app_config.default_template,
             'storage': app_config.storage, 'cores': int(params.get('cpu', 1)),
-            'memory': int(params.get('ram', 128)), 'rootfs': f"{app_config.storage}:{disk_size_gb}",
-            'net0': net_config, 'onboot': 1, 'start': 1,
+            'memory': int(params.get('ram', 128)), 'rootfs': f"{app_config.storage}:{math.ceil(int(params.get('disk', 1024)) / 1024)}",
+            'net0': net_config_v4, 'onboot': 1, 'start': 1,
         }
+
+        all_assigned_ips = [assigned_ip_v4]
+        assigned_ip_v6_main = None
+        assigned_ip_v6_display = None
+
+        ip_template_v6 = params.get('ip_template_v6')
+        cidr_prefix_v6 = params.get('ip_cidr_prefix_v6')
+        gateway_v6 = params.get('gateway_v6')
+        if all([ip_template_v6, cidr_prefix_v6, gateway_v6, app_config.bridge_v6]):
+            assigned_ip_v6_main = ip_template_v6.replace('{vmid}', str(vmid))
+            net_config_v6 = f"name=eth1,bridge={app_config.bridge_v6},ip6={assigned_ip_v6_main}/{cidr_prefix_v6},gw6={gateway_v6}"
+            create_params['net1'] = net_config_v6
+            all_assigned_ips.append(assigned_ip_v6_main)
+            logger.info(f"检测到IPv6配置，将为容器添加: {net_config_v6}")
+        
+        ipv6_display_template = params.get('ipv6_display_only_template')
+        if ipv6_display_template:
+            assigned_ip_v6_display = ipv6_display_template.replace('{vmid}', str(vmid))
+            all_assigned_ips.append(assigned_ip_v6_display)
+            logger.info(f"检测到仅供显示的IPv6地址: {assigned_ip_v6_display}")
+
+        disk_size_mb = int(params.get('disk', 1024))
+
         try:
             logger.info(f"开始创建容器 {hostname} (VMID: {vmid}) 使用配置: {create_params}")
             task_id = self.node.lxc.create(**create_params)
@@ -242,31 +277,29 @@ class PVEManager:
             self._setup_new_user(vmid, hostname, params.get('password'))
             ssh_port = ssh_port_override if ssh_port_override is not None else random.randint(10000, 65535)
             
-            # 改造: 计算下一个重置日期
             next_reset_date = (datetime.date.today() + relativedelta(months=1)).strftime('%Y-%m-%d')
 
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            if preserved_traffic_data: # 这是重装流程
+            if preserved_traffic_data:
                 cursor.execute('''
-                    INSERT INTO containers (vmid, hostname, ip, cpu, ram, disk, os, nat_acl_limit, flow_limit_gb, ssh_port, owner, traffic_used_this_cycle_gb, last_traffic_snapshot_bytes, next_reset_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO containers (vmid, hostname, ip, ip_v6_display, cpu, ram, disk, os, nat_acl_limit, flow_limit_gb, ssh_port, owner, traffic_used_this_cycle_gb, last_traffic_snapshot_bytes, next_reset_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    vmid, hostname, assigned_ip, int(params.get('cpu', 1)), int(params.get('ram', 128)),
+                    vmid, hostname, assigned_ip_v4, assigned_ip_v6_display, int(params.get('cpu', 1)), int(params.get('ram', 128)),
                     disk_size_mb, params.get('system') or app_config.default_template,
                     int(params.get('ports', 0)), float(params.get('bandwidth', 0)), ssh_port, 'zjmf',
-                    preserved_traffic_data['traffic_used_this_cycle_gb'], 
-                    0, # 重装后，快照清零
-                    preserved_traffic_data['next_reset_date']
+                    preserved_traffic_data.get('traffic_used_this_cycle_gb', 0), 
+                    0,
+                    preserved_traffic_data.get('next_reset_date')
                 ))
-                logger.info(f"重装容器 {hostname}: 已保留旧的流量周期数据。")
-            else: # 这是全新创建流程
+            else:
                 cursor.execute('''
-                    INSERT INTO containers (vmid, hostname, ip, cpu, ram, disk, os, nat_acl_limit, flow_limit_gb, ssh_port, owner, next_reset_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO containers (vmid, hostname, ip, ip_v6_display, cpu, ram, disk, os, nat_acl_limit, flow_limit_gb, ssh_port, owner, next_reset_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    vmid, hostname, assigned_ip, int(params.get('cpu', 1)), int(params.get('ram', 128)),
+                    vmid, hostname, assigned_ip_v4, assigned_ip_v6_display, int(params.get('cpu', 1)), int(params.get('ram', 128)),
                     disk_size_mb, params.get('system') or app_config.default_template,
                     int(params.get('ports', 0)), float(params.get('bandwidth', 0)), ssh_port, 'zjmf', next_reset_date
                 ))
@@ -278,18 +311,18 @@ class PVEManager:
                 add_rule_result = self.add_nat_rule_via_iptables(hostname, 'tcp', str(ssh_port), '22')
                 if add_rule_result['code'] != 200:
                     logger.error(f"为容器 {hostname} 自动添加 SSH NAT 规则失败: {add_rule_result['msg']}")
-                    ssh_port = 0 # 表示添加失败
+                    ssh_port = 0
             except Exception as e_ssh_nat:
                 logger.error(f"为容器 {hostname} 自动添加 SSH NAT 规则时发生异常: {str(e_ssh_nat)}", exc_info=True)
-            return {'code': 200, 'msg': '容器创建成功', 'data': {'ssh_port': ssh_port, 'assigned_ip': assigned_ip}}
+            return {'code': 200, 'msg': '容器创建成功', 'data': {'ssh_port': ssh_port, 'assigned_ip': ','.join(all_assigned_ips)}}
         except Exception as e:
             logger.error(f"创建容器 {hostname} 过程中发生错误: {str(e)}", exc_info=True)
             return {'code': 500, 'msg': f'PVE API错误 (create): {str(e)}'}
 
+    # ... (其他函数保持不变, 此处省略)
     def delete_container(self, hostname):
         vmid = self._find_vmid_by_hostname(hostname)
         if not vmid:
-            # 容器可能已在PVE上被删除，但数据库记录还在，这里做兼容
             logger.warning(f"请求删除的容器 {hostname} 在PVE上未找到，将仅清理数据库记录。")
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -416,6 +449,7 @@ class PVEManager:
             ct_old = self._get_container_or_error(hostname)
             old_config = ct_old.config.get()
             net0 = old_config.get('net0', '')
+            net1 = old_config.get('net1', '')
             rate_mbps = 0
             if 'rate=' in net0:
                 rate_str = [p for p in net0.split(',') if p.startswith('rate=')][0]
@@ -423,7 +457,6 @@ class PVEManager:
             
             preserved_ssh_port = old_metadata.get('ssh_port')
             
-            # 改造: 打包需要保留的流量和周期数据
             preserved_traffic_data = {
                 'traffic_used_this_cycle_gb': old_metadata.get('traffic_used_this_cycle_gb', 0),
                 'next_reset_date': old_metadata.get('next_reset_date')
@@ -440,12 +473,19 @@ class PVEManager:
                 'ip_cidr_prefix_v4': net0.split('/')[1].split(',')[0],
                 'gateway_v4': [p.replace('gw=', '') for p in net0.split(',') if p.startswith('gw=')][0],
             }
+
+            if net1 and 'ip6=' in net1:
+                params_for_create['ip_template_v6'] = self._get_container_ip(ct_old, 'ipv6')
+                params_for_create['ip_cidr_prefix_v6'] = net1.split('/')[1].split(',')[0]
+                params_for_create['gateway_v6'] = [p.replace('gw6=', '') for p in net1.split(',') if p.startswith('gw6=')][0]
             
-            # 先删除旧容器
+            # 保留仅供显示的IPv6地址
+            if old_metadata.get('ip_v6_display'):
+                 params_for_create['ipv6_display_only_template'] = old_metadata.get('ip_v6_display')
+
             self.delete_container(hostname)
             time.sleep(5) 
             
-            # 再创建新容器，并传入需要保留的数据
             reinstall_result = self.create_container(params_for_create, ssh_port_override=preserved_ssh_port, preserved_traffic_data=preserved_traffic_data)
             
             if reinstall_result.get('code') == 200:
@@ -455,7 +495,7 @@ class PVEManager:
         except Exception as e:
             logger.error(f"重装容器 {hostname} 时发生错误: {e}", exc_info=True)
             return {'code': 500, 'msg': f'重装容器时发生错误: {e}'}
-    # ... (NAT相关函数无需修改, 保持原样)
+
     def list_nat_rules(self, hostname):
         conn = get_db_connection()
         cursor = conn.cursor()

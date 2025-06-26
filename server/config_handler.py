@@ -22,6 +22,7 @@ class AppConfig:
         self.node = parser.get('pve', 'NODE', fallback=None)
         self.storage = parser.get('pve', 'STORAGE', fallback=None)
         self.bridge = parser.get('pve', 'BRIDGE', fallback='vmbr0')
+        self.bridge_v6 = parser.get('pve', 'BRIDGE_V6', fallback=None)
         self.default_template = parser.get('pve', 'DEFAULT_TEMPLATE', fallback=None)
         self.main_interface = parser.get('pve', 'MAIN_INTERFACE', fallback=None)
         self.nat_listen_ip = parser.get('pve', 'NAT_LISTEN_IP', fallback=None)
