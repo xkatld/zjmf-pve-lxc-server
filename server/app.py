@@ -21,11 +21,12 @@ logging.basicConfig(level=getattr(logging, app_config.log_level, logging.INFO),
                     datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-pve_manager_for_sync_calls = None
-try:
-    pve_manager_for_sync_calls = PVEManager()
-except RuntimeError as e:
-    logger.critical(f"无法连接到PVE，同步调用功能将不可用。错误: {e}")
+def get_pve_manager_for_sync():
+    try:
+        return PVEManager()
+    except RuntimeError as e:
+        logger.critical(f"无法连接到PVE，同步调用功能将不可用。错误: {e}")
+        return None
 
 def api_key_required(f):
     @wraps(f)
@@ -62,10 +63,11 @@ def task_status():
 @api_key_required
 def api_check():
     logger.info(f"API /api/check a called successfully from {request.remote_addr}")
-    if not pve_manager_for_sync_calls:
-        return jsonify({'code': 500, 'msg': 'PVE管理器未初始化'})
+    pve_manager = get_pve_manager_for_sync()
+    if not pve_manager:
+        return jsonify({'code': 500, 'msg': 'PVE管理器未初始化或无法连接'})
     try:
-        pve_manager_for_sync_calls.proxmox.version.get()
+        pve_manager.proxmox.version.get()
         return jsonify({'code': 200, 'msg': 'PVE API连接正常'})
     except Exception as e:
         return jsonify({'code': 500, 'msg': f'PVE API连接失败: {e}'})
@@ -75,16 +77,18 @@ def api_check():
 def api_getinfo():
     hostname = request.args.get('hostname')
     if not hostname: return jsonify({'code': 400, 'msg': '缺少hostname参数'}), 400
-    if not pve_manager_for_sync_calls: return jsonify({'code': 500, 'msg': 'PVE管理器未初始化'})
-    return jsonify(pve_manager_for_sync_calls.get_container_info(hostname))
+    pve_manager = get_pve_manager_for_sync()
+    if not pve_manager: return jsonify({'code': 500, 'msg': 'PVE管理器未初始化或无法连接'})
+    return jsonify(pve_manager.get_container_info(hostname))
 
 @app.route('/api/natlist', methods=['GET'])
 @api_key_required
 def api_natlist():
     hostname = request.args.get('hostname')
     if not hostname: return jsonify({'code': 400, 'msg': '缺少hostname参数'}), 400
-    if not pve_manager_for_sync_calls: return jsonify({'code': 500, 'msg': 'PVE管理器未初始化'})
-    return jsonify(pve_manager_for_sync_calls.list_nat_rules(hostname))
+    pve_manager = get_pve_manager_for_sync()
+    if not pve_manager: return jsonify({'code': 500, 'msg': 'PVE管理器未初始化或无法连接'})
+    return jsonify(pve_manager.list_nat_rules(hostname))
 
 @app.route('/api/create', methods=['POST'])
 @api_key_required
