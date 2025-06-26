@@ -533,3 +533,33 @@ class PVEManager:
              return {'code': 200, 'msg': 'NAT规则已成功从iptables和数据库中删除。'}
         else:
              return {'code': 200, 'msg': '规则已从数据库移除（iptables中不存在，无需操作）。'}
+
+    def reset_system(self):
+        logger.warning("系统重置程序启动：将删除所有容器、NAT规则和数据库记录。")
+        all_containers = self._get_all_containers_from_db()
+        if not all_containers:
+            logger.info("数据库中没有容器，跳过容器删除步骤。")
+        else:
+            logger.info(f"检测到 {len(all_containers)} 个容器，将开始逐一删除。")
+            for container_meta in all_containers:
+                hostname = container_meta.get('hostname')
+                if hostname:
+                    logger.info(f"--- 正在处理并删除容器: {hostname} ---")
+                    self.delete_container(hostname)
+                    logger.info(f"--- 容器 {hostname} 已成功删除 ---")
+
+        logger.info("所有容器处理完毕，现在开始重置数据库。")
+        try:
+            if os.path.exists(LOCAL_DB_FILE):
+                os.remove(LOCAL_DB_FILE)
+                logger.info(f"数据库文件 '{LOCAL_DB_FILE}' 已被成功删除。")
+            
+            logger.info("正在重新初始化数据库...")
+            init_db()
+            logger.info("数据库已成功重置。")
+            logger.warning("系统重置成功完成！")
+            return True, "系统已成功重置。"
+        except Exception as e:
+            error_msg = f"重置数据库时发生严重错误: {e}"
+            logger.critical(error_msg, exc_info=True)
+            return False, error_msg
