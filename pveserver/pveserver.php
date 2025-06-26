@@ -133,54 +133,42 @@ function pveserver_CreateAccount($params)
         return ['status' => 'error', 'msg' => $res['msg'] ?? '创建任务提交失败，未返回有效任务ID'];
     }
 
-    $task_id = $res['task_id'];
-    $max_wait_time = 90; 
-    $start_time = time();
-
-    while (time() - $start_time < $max_wait_time) {
-        sleep(5); 
-        $status_res = pveserver_Curl($params, ['url' => '/api/task_status?task_id=' . $task_id], 'GET');
-
-        if (isset($status_res['status'])) {
-            if ($status_res['status'] == 'SUCCESS') {
-                $task_result = $status_res['result'];
-                if (isset($task_result['code']) && $task_result['code'] == 200) {
-                    $update_data = [
-                        'domainstatus' => 'Active',
-                        'username'     => $params['domain'],
-                    ];
-                    if (!empty($task_result['data']['assigned_ip'])) {
-                        $update_data['dedicatedip'] = $task_result['data']['assigned_ip'];
-                    }
-                    if (!empty($task_result['data']['ssh_port'])) {
-                        $update_data['port'] = $task_result['data']['ssh_port'];
-                    }
-                    try {
-                        Db::name('host')->where('id', $params['hostid'])->update($update_data);
-                        return ['status' => 'success', 'msg' => $task_result['msg'] ?? '创建成功'];
-                    } catch (\Exception $e) {
-                        return ['status' => 'error', 'msg' => '创建成功，但更新数据库失败: ' . $e->getMessage()];
-                    }
-                } else {
-                    return ['status' => 'error', 'msg' => '后台任务执行失败: ' . ($task_result['msg'] ?? '未知错误')];
-                }
-            } elseif ($status_res['status'] == 'FAILURE') {
-                return ['status' => 'error', 'msg' => '后台任务执行失败: ' . ($status_res['result'] ?? '未知错误')];
-            }
-        }
+    try {
+        Db::name('host')->where('id', $params['hostid'])->update(['notes' => 'CREATING_TASK_ID:' . $res['task_id']]);
+        return ['status' => 'success', 'msg' => '创建任务已提交，请访问产品详情页查看进度。'];
+    } catch (\Exception $e) {
+        return ['status' => 'error', 'msg' => '任务已提交，但更新主机备注失败: ' . $e->getMessage()];
     }
-
-    return ['status' => 'error', 'msg' => '创建超时，请联系管理员检查后台任务状态。任务ID: ' . $task_id];
 }
 
 function pveserver_ClientArea($params)
 {
+    $host = Db::name('host')->where('id', $params['hostid'])->find();
+    $notes = $host['notes'] ?? '';
+
+    if (strpos($notes, 'CREATING_TASK_ID:') === 0 || strpos($notes, 'REINSTALL_TASK_ID:') === 0) {
+         return ['status' => ['name' => '任务状态']];
+    }
+
     return ['info' => ['name' => '产品信息'], 'nat_acl' => ['name' => 'NAT转发']];
 }
 
 function pveserver_ClientAreaOutput($params, $key)
 {
-    if ($key == 'info') {
+    if ($key == 'status') {
+        $host = Db::name('host')->where('id', $params['hostid'])->find();
+        $notes = $host['notes'] ?? '';
+        $task_id = str_replace(['CREATING_TASK_ID:', 'REINSTALL_TASK_ID:'], '', $notes);
+        $task_type = strpos($notes, 'CREATING_TASK_ID:') === 0 ? '创建' : '重建';
+        
+        return [
+            'template' => 'templates/status.html',
+            'vars' => [
+                'title' => '实例' . $task_type . '中',
+                'task_id' => $task_id
+            ]
+        ];
+    } elseif ($key == 'info') {
         $res = pveserver_Curl($params, ['url'  => '/api/getinfo?hostname=' . $params['domain']], 'GET');
         if (isset($res['code']) && $res['code'] == 200 && isset($res['data'])) {
             if (isset($res['data']['UsedDisk'])) {
@@ -193,7 +181,13 @@ function pveserver_ClientAreaOutput($params, $key)
             } else {
                 $res['data']['TotalDiskGB'] = '0.00';
             }
-            return ['template' => 'templates/info.html', 'vars' => ['data' => $res['data']]];
+            return [
+                'template' => 'templates/info.html', 
+                'vars' => [
+                    'data' => $res['data'],
+                    'PublicIP' => $params['server_ip']
+                ]
+            ];
         }
         return ['template' => 'templates/error.html', 'vars' => ['msg' => $res['msg'] ?? '获取信息失败']];
     } elseif ($key == 'nat_acl') {
@@ -207,7 +201,58 @@ function pveserver_ClientAreaOutput($params, $key)
 
 function pveserver_AllowFunction()
 {
-    return ['client' => ['natadd', 'natdel']];
+    return ['client' => ['natadd', 'natdel', 'checktask']];
+}
+
+function pveserver_checktask($params)
+{
+    $host = Db::name('host')->where('id', $params['hostid'])->find();
+    $notes = $host['notes'] ?? '';
+
+    if (empty($notes) || (strpos($notes, 'CREATING_TASK_ID:') !== 0 && strpos($notes, 'REINSTALL_TASK_ID:') !== 0)) {
+        return ['status' => 'error', 'msg' => '没有活动的任务'];
+    }
+    
+    $task_id = str_replace(['CREATING_TASK_ID:', 'REINSTALL_TASK_ID:'], '', $notes);
+    $task_type = strpos($notes, 'CREATING_TASK_ID:') === 0 ? 'CREATING' : 'REINSTALL';
+
+    $status_res = pveserver_Curl($params, ['url' => '/api/task_status?task_id=' . $task_id], 'GET');
+
+    if (!isset($status_res['status'])) {
+        return ['status' => 'error', 'msg' => '无法获取任务状态'];
+    }
+
+    if ($status_res['status'] == 'SUCCESS') {
+        $task_result = $status_res['result'];
+        if (isset($task_result['code']) && $task_result['code'] == 200) {
+            try {
+                $update_data = ['notes' => ''];
+                if ($task_type === 'CREATING') {
+                    $update_data['domainstatus'] = 'Active';
+                    $update_data['dedicatedip'] = $params['server_ip'];
+
+                    if (!empty($task_result['data']['assigned_ip'])) {
+                        $update_data['assignedips'] = $task_result['data']['assigned_ip'];
+                    }
+                    if (!empty($task_result['data']['ssh_port'])) {
+                        $update_data['port'] = $task_result['data']['ssh_port'];
+                    }
+                }
+                Db::name('host')->where('id', $params['hostid'])->update($update_data);
+                return ['status' => 'success', 'msg' => $task_result['msg'] ?? '任务执行成功'];
+            } catch (\Exception $e) {
+                return ['status' => 'error', 'msg' => '任务成功，但更新数据库失败: ' . $e->getMessage()];
+            }
+        } else {
+             Db::name('host')->where('id', $params['hostid'])->update(['notes' => '']);
+            return ['status' => 'failure', 'msg' => '后台任务执行失败: ' . ($task_result['msg'] ?? '未知错误')];
+        }
+    } elseif ($status_res['status'] == 'FAILURE') {
+        Db::name('host')->where('id', $params['hostid'])->update(['notes' => '']);
+        return ['status' => 'failure', 'msg' => '后台任务执行失败: ' . ($status_res['result'] ?? '未知错误')];
+    } else {
+        return ['status' => 'pending', 'msg' => '任务仍在进行中...'];
+    }
 }
 
 function pveserver_HandleAsyncTask($params, $action, $action_cn)
@@ -282,10 +327,16 @@ function pveserver_Reinstall($params)
         ]
     ];
     $res = pveserver_JSONCurl($params, $data, 'POST');
-    if (isset($res['code']) && $res['code'] == 202) {
-        return ['status' => 'success', 'msg' => '重装任务已提交，正在后台处理'];
-    } else {
+
+    if (!isset($res['code']) || $res['code'] != 202 || empty($res['task_id'])) {
         return ['status' => 'error', 'msg' => $res['msg'] ?? '重装任务提交失败'];
+    }
+    
+    try {
+        Db::name('host')->where('id', $params['hostid'])->update(['notes' => 'REINSTALL_TASK_ID:' . $res['task_id']]);
+        return ['status' => 'success', 'msg' => '重装任务已提交，请访问产品详情页查看进度。'];
+    } catch (\Exception $e) {
+        return ['status' => 'error', 'msg' => '任务已提交，但更新主机备注失败: ' . $e->getMessage()];
     }
 }
 

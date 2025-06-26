@@ -432,29 +432,31 @@ class PVEManager:
 
     def add_nat_rule_via_iptables(self, hostname, dtype, dport, sport):
         metadata = self._get_container_metadata_from_db(hostname)
-        if not metadata: return {'code': 404, 'msg': '容器元数据未找到'}
+        if not metadata:
+            return {'code': 404, 'msg': '容器元数据未找到'}
+
         limit = int(metadata.get('nat_acl_limit', 0))
+        container_ip = metadata.get('ip')
+        if not container_ip:
+            return {'code': 500, 'msg': '无法从数据库获取容器IP地址。'}
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM nat_rules WHERE hostname = ? AND sport != '22'", (hostname,))
-        current_host_rules_count = cursor.fetchone()[0]
 
         is_ssh_rule = (str(sport) == '22' and dtype.lower() == 'tcp')
-        if not is_ssh_rule and limit > 0 and current_host_rules_count >= limit:
-            conn.close()
-            return {'code': 403, 'msg': f'已达到NAT规则数量上限 ({limit}条)'}
-        
+
+        if not is_ssh_rule and limit > 0:
+            cursor.execute("SELECT COUNT(*) FROM nat_rules WHERE hostname = ? AND sport != '22'", (hostname,))
+            current_host_rules_count = cursor.fetchone()[0]
+            if current_host_rules_count >= limit:
+                conn.close()
+                return {'code': 403, 'msg': f'已达到NAT规则数量上限 ({limit}条)'}
+
         cursor.execute("SELECT * FROM nat_rules WHERE dport = ? AND dtype = ?", (str(dport), dtype.lower()))
         existing_rule = cursor.fetchone()
         if existing_rule:
             conn.close()
             return {'code': 409, 'msg': '此外部端口和协议已被占用'}
-        
-        container_ip = metadata.get('ip')
-        if not container_ip:
-            conn.close()
-            return {'code': 500, 'msg': '无法从数据库获取容器IP地址。'}
 
         rule_comment = f'zjmf_pve_nat_{hostname}_{dtype.lower()}_{dport}'
         dnat_args = [
@@ -464,10 +466,10 @@ class PVEManager:
             '-m', 'comment', '--comment', rule_comment
         ]
         success_dnat, msg_dnat = self._run_shell_command(dnat_args)
-        if not success_dnat: 
+        if not success_dnat:
             conn.close()
             return {'code': 500, 'msg': f"添加DNAT规则失败: {msg_dnat}"}
-        
+
         masquerade_args = [
             'iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s', container_ip,
             '-o', app_config.main_interface, '-j', 'MASQUERADE',
@@ -479,16 +481,16 @@ class PVEManager:
             self._run_shell_command(dnat_del_args)
             conn.close()
             return {'code': 500, 'msg': f"添加MASQUERADE规则失败: {msg_masq}"}
-        
+
         cursor.execute('''
             INSERT INTO nat_rules (rule_id, hostname, dtype, dport, sport, container_ip)
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (rule_comment, hostname, dtype.lower(), str(dport), str(sport), container_ip))
         conn.commit()
         conn.close()
-        
-        return {'code': 200, 'msg': 'NAT规则(iptables)添加成功'}
 
+        return {'code': 200, 'msg': 'NAT规则(iptables)添加成功'}
+        
     def delete_nat_rule_via_iptables(self, hostname, dtype, dport, sport, from_delete=False):
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -512,18 +514,22 @@ class PVEManager:
             '-j', 'DNAT', '--to-destination', f"{container_ip}:{sport}",
             '-m', 'comment', '--comment', rule_comment
         ]
-        self._run_shell_command(dnat_del_args)
+        success_dnat, _ = self._run_shell_command(dnat_del_args)
         
         masquerade_del_args = [
             'iptables', '-t', 'nat', '-D', 'POSTROUTING', '-s', container_ip,
             '-o', app_config.main_interface, '-j', 'MASQUERADE',
             '-m', 'comment', '--comment', f'{rule_comment}_masq'
         ]
-        self._run_shell_command(masquerade_del_args)
+        success_masq, _ = self._run_shell_command(masquerade_del_args)
 
         if not from_delete:
             cursor.execute("DELETE FROM nat_rules WHERE rule_id = ?", (rule_comment,))
             conn.commit()
         
         conn.close()
-        return {'code': 200, 'msg': 'NAT规则(iptables)删除尝试完成'}
+
+        if success_dnat or success_masq:
+             return {'code': 200, 'msg': 'NAT规则已成功从iptables和数据库中删除。'}
+        else:
+             return {'code': 200, 'msg': '规则已从数据库移除（iptables中不存在，无需操作）。'}
