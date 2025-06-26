@@ -53,7 +53,7 @@ NAT_LISTEN_IP = 10.0.0.222
 
 ```shell
 apt update -y
-apt install wget curl sudo git screen nano unzip iptables-persistent iptables -y
+apt install wget curl sudo git screen nano unzip iptables-persistent iptables redis-server -y
 apt install python3-pip python3 -y
 rm /usr/lib/python3.11/EXTERNALLY-MANAGED
 pip3 install -r requirements.txt
