@@ -24,37 +24,8 @@
 * **原生 `iptables` 集成**: 后端直接调用 `iptables` 命令动态管理NAT规则和网络暂停策略，性能高效且稳定。
 * **配置集中化**: 所有的服务参数，包括数据库、PVE连接信息、API密钥等，都通过 `app.ini` 文件进行统一配置，方便部署和维护。
 
-## 配置文件 (`server/app.ini`)
+## License
 
-后端服务的核心配置。
-
-```ini
-[server]
-HTTP_PORT = 8080
-TOKEN = 7215EE9C7D9DC229D2921A40E899EC5F
-LOG_LEVEL = INFO
-
-[pve]
-API_HOST = 127.0.0.1
-API_USER = root@pam
-API_PASSWORD = 7215EE9C7D9DC229D2921A40E899EC5F
-NODE = armpve1
-STORAGE = local
-BRIDGE = vmbr0
-DEFAULT_TEMPLATE = local:vztmpl/c9sa.tar.xz
-MAIN_INTERFACE = enp0s6
-NAT_LISTEN_IP = 10.0.0.222
-```
-
-## 安装与启动
-
-请在PVE宿主机或有权限访问PVE API的服务器上执行以下命令。
-
-```shell
-apt update -y
-apt install wget curl sudo git screen nano unzip iptables-persistent iptables redis-server -y
-apt install python3-pip python3 -y
-rm /usr/lib/python3.11/EXTERNALLY-MANAGED
-pip3 install -r requirements.txt
-celery -A tasks.celery_app worker --loglevel=DEBUG
-```
+This project is source-available and licensed for non-commercial use only.  
+Commercial use is prohibited unless authorized by the author.  
+See [LICENSE](./LICENSE) for details.
