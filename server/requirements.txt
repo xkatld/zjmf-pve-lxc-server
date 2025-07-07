@@ -1,6 +1,0 @@
-Flask
-proxmoxer
-configparser
-APScheduler
-celery
-redis
