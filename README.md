@@ -1,5 +1,7 @@
 这是 `zjmf-pve-lxc-server` 的首个公开测试版本，旨在将强大的 Proxmox VE 虚拟化平台与魔方财务系统无缝对接，实现LXC容器的全面自动化管理。
 
+使用教程请移步[Wiki](https://github.com/xkatld/zjmf-pve-lxc-server/wiki)
+
 ### 主要功能
 
 * **全生命周期管理**: 实现从创建、开机、关机、重启、重装到终止的全套自动化流程。
