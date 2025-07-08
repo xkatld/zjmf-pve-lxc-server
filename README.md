@@ -24,8 +24,17 @@
 * **原生 `iptables` 集成**: 后端直接调用 `iptables` 命令动态管理NAT规则和网络暂停策略，性能高效且稳定。
 * **配置集中化**: 所有的服务参数，包括数据库、PVE连接信息、API密钥等，都通过 `app.ini` 文件进行统一配置，方便部署和维护。
 
-## License
+### License
 
 This project is source-available and licensed for non-commercial use only.  
 Commercial use is prohibited unless authorized by the author.  
 See [LICENSE](./LICENSE) for details.
+
+### 演示图片
+![image](https://github.com/user-attachments/assets/12e638c0-fe69-47a6-8564-512b5e464afd)
+![image](https://github.com/user-attachments/assets/26d51d00-1326-49e9-9670-a23cb0fa1367)
+![image](https://github.com/user-attachments/assets/f35e0640-c432-47d5-afe7-c7eba41155a1)
+![image](https://github.com/user-attachments/assets/4eba26bf-294f-446e-bab4-b4c14b61c035)
+
+
+
