@@ -1,3 +1,13 @@
+# 新版本2.0项目发布
+新项目地址 [lxdapi-web-server](https://github.com/xkatld/lxdapi-web-server)
+- 支持各大主流财务 独立web面板 全网络配置支持 等全新设计和功能
+- 1.0版本将会 减少维护 处理不即时 等问题 建议使用2.0版本
+## 联系
+
+需要加群讨论的可以先加微信`fsynetcom`记得备注。
+
+---
+
 这是 `zjmf-pve-lxc-server` 的首个公开测试版本，旨在将强大的 Proxmox VE 虚拟化平台与魔方财务系统无缝对接，实现LXC容器的全面自动化管理。
 
 使用教程请移步[Wiki](https://github.com/xkatld/zjmf-pve-lxc-server/wiki)
